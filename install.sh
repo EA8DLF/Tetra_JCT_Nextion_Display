@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-#  TETRA Nextion Display v3.3 - Instalador
+#  TETRA Nextion Display v4.0 - Instalador
 #  EA8DLF 2026 — https://github.com/ea8dlf/tetra-nextion
 # ═══════════════════════════════════════════════════════════════
 
@@ -21,8 +21,9 @@ SERVICE_NAME="tetra-nextion"
 clear
 echo -e "${BLUE}${BOLD}"
 echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║        TETRA Nextion Display v3.3 - EA8DLF          ║"
+echo "  ║        TETRA Nextion Display v4.0 - EA8DLF          ║"
 echo "  ║              Instalador automático                   ║"
+echo "  ║   Compatible: TJC3224T028 (320×240) | TJC8048X543 (800×480)  ║"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 echo ""
@@ -246,7 +247,7 @@ if [[ "$INPUT_SERVICE" =~ ^[Ss]$ ]]; then
 
     sudo tee "$SERVICE_FILE" > /dev/null << SERVICEEOF
 [Unit]
-Description=TETRA Nextion Display v3.3 - EA8DLF
+Description=TETRA Nextion Display v4.0 - EA8DLF
 After=network-online.target
 Wants=network-online.target
 

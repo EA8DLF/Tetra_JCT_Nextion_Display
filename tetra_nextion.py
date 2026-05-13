@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# TETRA Nextion Display v3.3
+# TETRA Nextion Display v4.0
 # Copyright (C) 2026 Jose Maria - EA8DLF
 #
 # This program is free software: you can redistribute it and/or modify
@@ -14,15 +14,26 @@
 #
 # https://www.gnu.org/licenses/gpl-3.0.txt
 # ═══════════════════════════════════════════════════════════════
-#  TETRA Nextion/TJC Display v3.3 - EA8DLF 2026
-#  Pantalla TJC3224T022 por UART GPIO /dev/serial0
+#  TETRA Nextion/TJC Display v4.0 - EA8DLF 2026
+#
+#  Compatible con pantallas:
+#    · TJC3224T022 / TJC3224T028  (320×240 px)
+#    · TJC8048X543                 (800×480 px) ← nueva
 #
 #  ESTADOS:
-#  STANDBY    → page0 (reloj, IP, temp, terminales)
-#  VOZ        → page1 (SOLO llamadas de voz)
+#  STANDBY    → page0 (reloj, IP, temp, terminales, último tráfico)
+#  VOZ        → page1 (llamadas de voz con historial)
 #  POST_VOZ   → page1 (20s tras PTT)
 #  SDS        → page4 (texto legible) o ignorado (GPS/binario)
-#  EMERGENCIA → page3 (25s, prioridad absoluta)
+#  EMERGENCIA → page3 (SOS con sirenas, 25s, prioridad absoluta)
+#
+#  CAMBIOS v4.0 respecto a v3.3:
+#    · ter1/ter2/ter3 muestran texto sin "Online"/"Offline"
+#    · t_st1/t_st2/t_st3 muestran estado con color verde/rojo
+#    · t_hist1/t_hist2 en standby con último tráfico de voz
+#    · t_ip/t_temp/t_volt incluyen label en el texto
+#    · t_hora en page1 muestra fecha+hora+temp+voltaje completo
+#    · Compatibilidad total con HMI 320×240 (comandos ignorados si no existe)
 #
 #  REQUISITOS: pip install pyserial requests
 #  CONFIGURACIÓN: editar sección ─── AJUSTES ───
@@ -89,7 +100,6 @@ def read_config():
     """Lee frecuencias y MCC/MNC del config.toml de bluestation-bs."""
     paths = [CONFIG_TOML] if CONFIG_TOML else []
     if not CONFIG_TOML:
-        # Buscar automáticamente en el directorio home
         for p in sorted(Path.home().rglob("config.toml")):
             if "bluestation" in str(p).lower():
                 paths.append(str(p))
@@ -134,7 +144,7 @@ def send(cmd):
     except Exception as e:
         print(f"[uart] {e}")
 
-def txts(comp, val, maxlen=25):
+def txts(comp, val, maxlen=40):
     send(f'{comp}.txt="{str(val)[:maxlen]}"')
 
 # ─── RADIOID ──────────────────────────────────────────────────
@@ -213,7 +223,7 @@ def get_flag(callsign):
     if cs[:2] == 'OE':                                               return 18,  "AUSTRIA"
     if cs[:2] in ['EI','EJ']:                                        return 102, "IRELAND"
     if cs[:2] in ['SV','SZ','J4']:                                   return 57,  "GREECE"
-    if cs[:2] in ['SP','SQ','SR','SN','SO']:                         return 169, "POLAND"
+    if cs[:2] in ['SP','SQ','SR','SN','SO']:                        return 169, "POLAND"
     if cs[:2] in ['OK','OL']:                                        return 61,  "CZECH Rep"
     if cs[:2] in ['HA','HG']:                                        return 96,  "HUNGARY"
     if cs[:2] in ['YO','YP','YQ','YR']:                              return 175, "ROMANIA"
@@ -245,7 +255,6 @@ def fetch_stats():
                 updated = True
             except: pass
         if not updated:
-            # Fallback: leer directamente del sistema
             try:
                 with open("/sys/class/thermal/thermal_zone0/temp") as f:
                     stats["cpuTemp"] = int(f.read()) / 1000.0
@@ -285,35 +294,45 @@ def update_terminal(issi, rssi=None, tg=None):
         t["tg"] = str(tg)
 
 def terminal_line(issi):
-    """Genera línea de texto para mostrar en standby."""
+    """Genera línea de texto para mostrar en standby (sin Online/Offline)."""
     t = terminals.get(str(issi))
     if not t: return ""
     cs   = t["callsign"] or lookup(issi)[0]
-    rssi = f"{t['rssi']:.0f}dB" if t["rssi"] != 0 else "---"
-    return f"{cs} {issi}  {rssi}  TG:{t['tg']}"
+    issi_str = str(issi)
+    return f"{issi_str}  {cs}  TG:{t['tg']}"
 
 def refresh_terminals():
-    """Actualiza los 3 terminales en standby con color Online/Offline."""
+    """Actualiza los 3 terminales en standby con badge de estado separado."""
     if STATE[0] != "STANDBY":
         return
     sorted_t = [issi for issi, _ in sorted(
         terminals.items(), key=lambda x: x[1]["rssi_time"], reverse=True
     )]
     for i in range(1, 4):
-        comp = f"ter{i}"
+        comp    = f"ter{i}"
+        st_comp = f"t_st{i}"
         if i-1 < len(sorted_t):
             issi   = sorted_t[i-1]
             t      = terminals.get(str(issi), {})
             online = t.get("online", False)
-            send(f"{comp}.pco={2016 if online else 63488}")
-            txts(comp, terminal_line(issi), 35)
+            # Texto del terminal sin Online/Offline
+            txts(comp, terminal_line(issi), 40)
+            # Badge de estado separado con color
+            if online:
+                txts(st_comp, "Online", 8)
+                send(f"{st_comp}.pco=2024")   # verde #00FF44
+                send(f"{st_comp}.bco=384")    # fondo verde oscuro #003300
+            else:
+                txts(st_comp, "Offline", 8)
+                send(f"{st_comp}.pco=63488")  # rojo #FF0000
+                send(f"{st_comp}.bco=6144")   # fondo rojo oscuro #1A0000
         else:
-            send(f"{comp}.pco=2047")
-            txts(comp, "", 35)
+            txts(comp, "", 40)
+            txts(st_comp, "", 8)
 
 def init_terminals_from_journal():
     """Lee el journal para conocer el estado Online/Offline al arrancar."""
-    time.sleep(5)  # Esperar a que radioid cargue
+    time.sleep(5)
     try:
         result = subprocess.run(
             ["journalctl", "--since", "2 hours ago", "--no-pager", "-q"],
@@ -339,29 +358,24 @@ def init_terminals_from_journal():
 
 # ─── SDS TEXTO ────────────────────────────────────────────────
 def is_readable_text(byte_list):
-    """True si los bytes (desde posición 4) son texto ASCII legible."""
     if len(byte_list) <= 4:
         return False
     text_bytes = [b for b in byte_list[4:] if 32 <= b < 128]
     return len(text_bytes) >= len(byte_list[4:]) * 0.7 and len(text_bytes) >= 3
 
 def decode_sds_text(byte_list):
-    """Decodifica bytes a texto ASCII desde el byte 4."""
     return "".join(chr(b) for b in byte_list[4:] if 32 <= b < 128).strip()
 
 def get_sds_text_from_journal(dst_issi, seconds=10):
-    """Busca el texto SDS más reciente en el journal para un ISSI destino."""
     try:
         result = subprocess.run(
             ["journalctl", f"--since={seconds} seconds ago", "--no-pager", "-q"],
             capture_output=True, text=True, timeout=3
         )
         lines = list(reversed(result.stdout.splitlines()))
-        # Patrón para SDS local (USdsData)
         p_local = re.compile(
             r"USdsData \{.*?called_party_ssi: Some\(" + str(dst_issi) + r"\).*?\[([\d,\s]+)\]"
         )
-        # Patrón para SDS de red (CmceSdsData)
         p_net = re.compile(
             r"CmceSdsData \{ source_issi: \d+, dest_issi: " + str(dst_issi) + r".*?\[([\d,\s]+)\]"
         )
@@ -385,10 +399,18 @@ def hora():
 def fecha_hora():
     return datetime.now().astimezone().strftime("%d/%m/%Y  %H:%M:%S")
 
+def fecha_hora_sistema():
+    """Línea completa para barra inferior: fecha, hora, temp y voltaje."""
+    temp = stats.get("cpuTemp", 0)
+    volt = stats.get("voltage", 0)
+    volt_str = f"{volt:.1f}V" if volt > 0 else "---V"
+    return f"Fecha: {datetime.now().astimezone().strftime('%d/%m/%Y')}  Hora: {hora()}  Temp: {temp:.1f}\xb0C  Voltaje: {volt_str}"
+
 # ─── MÁQUINA DE ESTADOS ───────────────────────────────────────
 STATE           = ["STANDBY"]
 current_page    = [0]
-call_log        = []
+call_log        = []        # Historial de llamadas para page1
+voice_hist      = []        # Último tráfico para standby page0 (t_hist1/t_hist2)
 active_calls    = {}
 state_start     = [0]
 call_start      = [0]
@@ -398,7 +420,6 @@ emergency_issi  = [None]
 emergency_shown = [False]
 
 def in_voice_protection():
-    """True si hay voz activa o dentro del bloqueo SDS tras voz."""
     if STATE[0] in ("VOZ", "EMERGENCIA"):
         return True
     return time.time() - voice_end_time[0] < SDS_BLOCK_TIME
@@ -412,12 +433,23 @@ def show_standby():
     temp = stats.get("cpuTemp", 0)
     volt = stats.get("voltage", 0)
     ip   = stats.get("localIp", "---")
+    volt_str = f"{volt:.1f}V" if volt > 0 else "---V"
+
     txts("t_hora",  hora(), 10)
     txts("t_fecha", datetime.now().astimezone().strftime("%d/%m/%Y"), 12)
-    txts("t_ip",    f"IP:{ip}", 20)
-    txts("t_temp",  f"{temp:.1f}\xb0C", 8)
-    txts("t_volt",  f"{volt:.1f}V" if volt > 0 else "---V", 8)
+    txts("t_ip",    f"IP: {ip}", 22)
+    txts("t_temp",  f"Temp: {temp:.1f}\xb0C", 14)
+    txts("t_volt",  f"Voltaje: {volt_str}", 14)
     txts("t_mcc",   f"MCC:{MCC} MNC:{MNC}", 20)
+
+    # Último tráfico de voz (solo pantalla 800×480 — ignorado en 320×240)
+    for i, entry in enumerate(voice_hist[:2], 1):
+        txts(f"t_hist{i}", entry, 50)
+    if len(voice_hist) < 1:
+        txts("t_hist1", "", 50)
+    if len(voice_hist) < 2:
+        txts("t_hist2", "", 50)
+
     refresh_terminals()
 
 # ─── PANTALLA VOZ (page1) ─────────────────────────────────────
@@ -431,35 +463,41 @@ def show_event(issi, tipo, tg="", issi_dst=""):
         current_page[0] = 1
         time.sleep(0.2)
 
-    txts("t_freq",      f"TX:{TX_FREQ} RX:{RX_FREQ}", 30)
-    txts("t_main",      f"{callsign} {name}", 30)
+    txts("t_freq",      f"Frec. TX:{TX_FREQ}   Frec. RX:{RX_FREQ}", 45)
+    txts("t_main",      f"{callsign}  {name}", 35)
     txts("t_pais",      pais, 20)
-    txts("t_provincia", provincia[:20], 20)
-    txts("t_tipo",      tipo, 10)
+    txts("t_provincia", provincia[:25], 25)
+    txts("t_tipo",      f"Tipo de Llamada: {tipo}", 25)
     txts("t_mcc_p1",    f"MCC:{MCC} MNC:{MNC}", 20)
     send(f"p_flag.pic={pic}")
 
     if tg:
-        txts("t_tg", f"TG:{tg}", 12)
+        txts("t_tg", f"TG: {tg}", 15)
     elif issi_dst:
-        txts("t_tg", f"- {lookup(issi_dst)[0]}", 12)
+        txts("t_tg", f"- {lookup(issi_dst)[0]}", 15)
     else:
-        txts("t_tg", "", 12)
+        txts("t_tg", "", 15)
 
-    # Historial de llamadas
+    # Historial de llamadas en page1
     if time.time() - connected_at[0] > 3:
-        tg_str = tg or issi_dst or "?"
-        entry  = f"{callsign[:6]} TG:{tg_str} {hora()[:5]}"
-        if not call_log or call_log[0] != entry:
-            call_log.insert(0, entry)
+        tg_str   = tg or issi_dst or "?"
+        log_entry = f"Indicativo: {callsign} - TG:{tg_str} - Hora: {hora()[:5]}"
+        if not call_log or call_log[0] != log_entry:
+            call_log.insert(0, log_entry)
             call_log[:] = call_log[:4]
             for i, log in enumerate(call_log, 1):
-                txts(f"t_log{i}", log, 20)
+                txts(f"t_log{i}", log, 50)
+
+        # Actualizar historial para standby (t_hist1/t_hist2 en page0)
+        hist_entry = f"Indicativo: {callsign} - TG:{tg_str} - Hora: {hora()[:5]}"
+        if not voice_hist or voice_hist[0] != hist_entry:
+            voice_hist.insert(0, hist_entry)
+            voice_hist[:] = voice_hist[:2]
 
 def update_event_clock():
     elapsed = int(time.time() - call_start[0]) if call_start[0] > 0 else 0
     mins, secs = divmod(elapsed, 60)
-    txts("t_hora", f"{fecha_hora()}  [{mins:02d}:{secs:02d}]", 40)
+    txts("t_hora", fecha_hora_sistema() + f"  [{mins:02d}:{secs:02d}]", 60)
 
 # ─── PANTALLA SDS TEXTO (page4) ───────────────────────────────
 def show_sds_text(issi_src, issi_dst, text):
@@ -470,16 +508,16 @@ def show_sds_text(issi_src, issi_dst, text):
         current_page[0] = 4
         time.sleep(0.2)
 
-    txts("t_sfreq", f"TX:{TX_FREQ} RX:{RX_FREQ}", 30)
-    txts("t_sds",   f"{callsign} {name}", 30)
-    txts("t_hora",  f"{fecha_hora()}  {stats.get('cpuTemp',0):.1f}\xb0C", 35)
+    txts("t_sfreq", f"Frec. TX:{TX_FREQ}   Frec. RX:{RX_FREQ}", 45)
+    txts("t_sds",   f"{callsign}  {name}", 35)
+    txts("t_hora",  fecha_hora_sistema(), 60)
 
-    # Dividir texto por palabras en hasta 5 líneas de 38 chars
+    # Dividir texto en hasta 5 líneas de 45 chars (más espacio en 800×480)
     words   = text.split()
     lines   = []
     current = ""
     for word in words:
-        if len(current) + len(word) + 1 <= 38:
+        if len(current) + len(word) + 1 <= 45:
             current = (current + " " + word).strip()
         else:
             if current: lines.append(current)
@@ -487,16 +525,15 @@ def show_sds_text(issi_src, issi_dst, text):
     if current: lines.append(current)
 
     for i, field in enumerate(["t_smg","t_smg2","t_smg3","t_smg4","t_smg5"]):
-        txts(field, lines[i] if i < len(lines) else "", 40)
+        txts(field, lines[i] if i < len(lines) else "", 45)
 
     print(f"[SDS texto] {callsign} → {issi_dst}: {text}")
 
 # ─── PANTALLA EMERGENCIA (page3) ──────────────────────────────
 def reverse_geocode(lat, lon):
-    """Convierte coordenadas GPS a (calle, ciudad) via Nominatim."""
     try:
         url  = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json"
-        r    = requests.get(url, timeout=5, headers={"User-Agent": "TETRA-Display/3.3 EA8DLF"})
+        r    = requests.get(url, timeout=5, headers={"User-Agent": "TETRA-Display/4.0 EA8DLF"})
         addr = r.json().get("address", {})
         number = addr.get("house_number") or ""
         road   = addr.get("road") or addr.get("pedestrian") or addr.get("path") or ""
@@ -507,7 +544,6 @@ def reverse_geocode(lat, lon):
         return "", ""
 
 def parse_emergency_text(text):
-    """Parsea el texto del SDS de emergencia."""
     result = {"issi": "", "callsign": "", "tg": "", "gps": "Sin posicion", "lat": None, "lon": None}
     m = re.search(r"ISSI\s+(\d+)", text)
     if m: result["issi"] = m.group(1)
@@ -540,12 +576,12 @@ def show_emergency(issi_src, text=""):
         current_page[0] = 3
         time.sleep(0.2)
 
-    txts("t_emerg_call", f"{callsign} {name}", 30)
-    txts("t_emerg_issi", f"ISSI: {issi_real}", 20)
-    txts("t_emerg_tg",   f"TG: {tg_real}", 12)
-    txts("t_emerg_gps",  f"GPS: {gps_txt}", 30)
-    txts("t_ecalle",     calle[:35], 35)
-    txts("t_epob",       ciudad[:35], 35)
+    txts("t_emerg_call", f"{callsign} {name}", 35)
+    txts("t_emerg_issi", f"ISSI: {issi_real}", 22)
+    txts("t_emerg_tg",   f"TG: {tg_real}", 15)
+    txts("t_emerg_gps",  f"GPS: {gps_txt}", 35)
+    txts("t_ecalle",     calle[:40], 40)
+    txts("t_epob",       ciudad[:40], 40)
     txts("t_emerg_hora", fecha_hora(), 25)
     print(f"[EMERGENCIA] {callsign} ({issi_real}) TG:{tg_real} GPS:{gps_txt}")
 
@@ -587,6 +623,8 @@ def process_line(line):
             if not t["callsign"]:
                 t["callsign"] = lookup(issi)[0]
             print(f"[terminal] ONLINE: {issi}")
+            if STATE[0] == "STANDBY":
+                refresh_terminals()
         return
 
     m = RE_DEREGISTER.search(line)
@@ -595,6 +633,8 @@ def process_line(line):
         if str(issi) in terminals:
             terminals[str(issi)]["online"] = False
             print(f"[terminal] OFFLINE: {issi}")
+            if STATE[0] == "STANDBY":
+                refresh_terminals()
         return
 
     # ── EMERGENCIA — texto decodificado (prioridad absoluta) ─
@@ -667,10 +707,8 @@ def process_line(line):
     m = RE_NET_SDS.search(line)
     if m:
         issi_src, issi_dst = m.group(1), m.group(2)
-        # Ignorar sistema y emergencias (procesadas por RE_EMERG_TEXT)
         if str(issi_src) in SYSTEM_ISSI or issi_src == EMERGENCY_ISSI:
             return
-        # Mostrar en page4 si el destino es un terminal local
         if str(issi_dst) in terminals:
             text = get_sds_text_from_journal(issi_dst)
             if text:
@@ -712,7 +750,6 @@ def process_line(line):
     m = RE_SDS.search(line)
     if m:
         issi_src, issi_dst, _ = m.group(1), m.group(2), m.group(3)
-        # Solo si el destino es local y el origen es externo
         if str(issi_dst) in terminals and str(issi_src) not in terminals:
             text = get_sds_text_from_journal(issi_dst)
             if text:
@@ -720,11 +757,9 @@ def process_line(line):
                 state_start[0]= time.time()
                 call_start[0] = time.time()
                 show_sds_text(issi_src, issi_dst, text)
-        # Sin texto legible → ignorar (no mostrar en page1)
 
 # ─── STREAM DE LOGS ───────────────────────────────────────────
 def stream_logs():
-    """Conecta al stream SSE del monitor y procesa cada línea de log."""
     if not API_URL:
         print("[stream] Sin monitor configurado — modo sin stream")
         return
@@ -772,7 +807,7 @@ def main_loop():
                 print("[state] SDS → STANDBY")
                 show_standby()
             else:
-                txts("t_hora", f"{fecha_hora()}  {stats.get('cpuTemp',0):.1f}\xb0C", 35)
+                txts("t_hora", fecha_hora_sistema(), 60)
 
         elif STATE[0] == "EMERGENCIA":
             if time.time() - state_start[0] >= EMERGENCY_DISPLAY:
@@ -802,7 +837,8 @@ def clock_standby():
 
 # ─── MAIN ─────────────────────────────────────────────────────
 def main():
-    print("[nextion] TETRA Nextion Display v3.3 - EA8DLF")
+    print("[nextion] TETRA Nextion Display v4.0 - EA8DLF")
+    print("[nextion] Compatible: TJC3224T028 (320×240) | TJC8048X543 (800×480)")
     init_serial()
     time.sleep(1)
     send("page 0")
@@ -816,7 +852,7 @@ def main():
     threading.Thread(target=clock_standby,             daemon=True).start()
     threading.Thread(target=init_terminals_from_journal, daemon=True).start()
 
-    print("[nextion] En marcha. v3.3")
+    print("[nextion] En marcha. v4.0")
     main_loop()
 
 if __name__ == "__main__":
