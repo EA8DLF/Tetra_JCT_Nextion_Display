@@ -1,4 +1,4 @@
-# TETRA Nextion Display v4.0
+# TETRA Nextion Display v4.1
 
 Monitor de red TETRA en tiempo real para pantalla TJC/Nextion conectada a Raspberry Pi mediante UART.
 
@@ -6,22 +6,28 @@ Desarrollado por **EA8DLF** · 2026
 
 ---
 
+## Novedades v4.1
+
+- 🔀 **Soporte dual-pantalla sin conflictos** — un solo script para 320×240 y 800×480 simultáneamente
+- 🏷️ **Componentes 800×480 renombrados con sufijo `g`** — elimina colisiones de nombres entre HMIs
+- 🍓 **Corrección Raspberry Pi 5** — puerto UART correcto (`/dev/ttyAMA0`) y eliminación automática de consola serie
+- 🔗 **URL repositorio corregida** — `https://github.com/EA8DLF/Tetra_JCT_Nextion_Display`
+
 ## Novedades v4.0
 
-- 🖥️ **Soporte pantalla 800×480** — compatible con TJC8048X543 (5") sin modificar el script
-- 🚦 **Estado de terminales mejorado** — badge Online/Offline independiente con color verde/rojo
-- 📋 **Último tráfico en standby** — muestra las 2 últimas llamadas de voz en page0
-- 🏷️ **Labels incluidos en campos** — IP, temperatura y voltaje muestran su etiqueta
-- 🔄 **Un solo script para ambas pantallas** — 320×240 y 800×480 comparten el mismo script
+- 🖥️ **Soporte pantalla 800×480** — compatible con TJC8048X543 (5")
+- 🚦 **Estado de terminales mejorado** — badge Online/Offline con color verde/rojo
+- 📋 **Último tráfico en standby** — 2 últimas llamadas de voz en page0
+- 🏷️ **Labels incluidos en campos** — IP, temperatura y voltaje con etiqueta
 
 ---
 
 ## Características
 
 - 📻 **Voz** — Indicativo, nombre, bandera del país, TG activo e historial de llamadas
-- 📨 **SDS texto** — Mensajes de texto recibidos por terminales locales en pantalla dedicada
+- 📨 **SDS texto** — Mensajes de texto recibidos por terminales locales
 - 🆘 **Emergencias** — Alerta SOS con sirenas animadas, GPS y geocodificación inversa (Nominatim)
-- 📊 **Standby** — Terminales activos con TG, estado Online/Offline y último tráfico de voz
+- 📊 **Standby** — Terminales activos con TG, estado Online/Offline y último tráfico
 - 🌍 **Banderas** — Detecta el país automáticamente por prefijo de indicativo (30+ países)
 - 🔄 **Compatible** con TetraPack Monitor (bluestation-bs) y modo sin monitor
 
@@ -32,34 +38,33 @@ Desarrollado por **EA8DLF** · 2026
 | Componente | Especificaciones |
 |---|---|
 | Raspberry Pi | 3B+ / 4B / **5** (cualquier modelo con GPIO 40 pines) |
-| Pantalla UART | TJC/Nextion **320×240** px o **800×480** px (ver lista) |
+| Pantalla UART | TJC/Nextion **320×240** o **800×480** px (ver lista) |
 | Cables | 4× Dupont hembra-hembra |
 
 ---
 
 ## Pantallas compatibles
 
-### 320×240 px — HMI original (v1)
+### 320×240 px — HMI v2 (`TETRA V2.tft`)
 
 | Fabricante | Modelos | Tamaño |
 |---|---|---|
-| **TJC** (China) | TJC3224T022, TJC3224T028 | 2.2" / 2.8" |
+| **TJC** | TJC3224T022, TJC3224T028 | 2.2" / 2.8" |
 | **Nextion Basic** | NX3224T022, NX3224T024, NX3224T028 | 2.2" / 2.4" / 2.8" |
 | **Nextion Enhanced** | NX3224K022, NX3224K024, NX3224K028 | 2.2" / 2.4" / 2.8" |
 
-### 800×480 px — HMI grande (v2)
+### 800×480 px — HMI v4 (`TETRA TJC8048X543 (800×480).tft`)
 
 | Fabricante | Modelos | Tamaño |
 |---|---|---|
-| **TJC Enhanced** | **TJC8048X543** | **5"** |
+| **TJC Enhanced** | TJC8048X543 | 5" |
 
 > Cada resolución requiere su propio archivo `.tft`. El script Python es el mismo para ambas.
+> Los componentes del HMI 800×480 llevan sufijo `g` para evitar conflictos con el HMI 320×240.
 
 ---
 
 ## Conexionado GPIO
-
-Mismos pines en todos los modelos de Raspberry Pi:
 
 ```
 Pantalla TJC/Nextion    Raspberry Pi GPIO
@@ -75,30 +80,37 @@ RX (pantalla)      →   Pin 8  (GPIO14 / TX)
 ## Instalación
 
 ```bash
-git clone https://github.com/ea8dlf/tetra-nextion
-cd tetra-nextion
+git clone https://github.com/EA8DLF/Tetra_JCT_Nextion_Display
+cd Tetra_JCT_Nextion_Display
 bash install.sh
 ```
 
 El instalador:
 - Detecta automáticamente el modelo de Raspberry Pi (incluida Pi 5)
 - Configura el UART en `/boot/firmware/config.txt` o `/boot/config.txt`
-- Detecta el puerto serie disponible
+- **Pi 5:** elimina `console=serial0` de `cmdline.txt` automáticamente
+- Detecta el puerto serie disponible (`/dev/ttyAMA0` en Pi 5)
 - Pregunta los datos de tu red TETRA (TX/RX, MCC, MNC, ISSI emergencias)
 - Instala el script y crea el servicio systemd
 
 ---
 
-## Raspberry Pi 5 — Nota importante
+## Raspberry Pi 5 — Notas importantes
 
-En la Pi 5 el UART del GPIO no está activo por defecto. El instalador lo configura automáticamente añadiendo a `/boot/firmware/config.txt`:
+### UART GPIO
+En la Pi 5 el UART del GPIO no está activo por defecto. El instalador lo configura añadiendo a `/boot/firmware/config.txt`:
 
 ```
 dtoverlay=uart0-pi5
 dtoverlay=disable-bt
 ```
 
-Tras la instalación se pedirá **reiniciar** para activar el UART.
+El puerto correcto en Pi 5 es `/dev/ttyAMA0` (no `/dev/serial0`).
+
+### Consola serie
+En Pi 5 la consola del sistema ocupa el UART por defecto, bloqueando la comunicación con la pantalla. El instalador elimina automáticamente `console=serial0,115200` de `/boot/firmware/cmdline.txt`.
+
+Tras la instalación se pedirá **reiniciar** para aplicar todos los cambios.
 
 ---
 
@@ -113,21 +125,20 @@ Tras la instalación se pedirá **reiniciar** para activar el UART.
 
 ---
 
-## Componentes HMI — Nuevos en v4.0
+## Componentes HMI
 
-### page0 — Standby
+### Pantalla 320×240 — nombres originales
 
-| Componente | Descripción |
+| Página | Componentes |
 |---|---|
-| `t_st1` / `t_st2` / `t_st3` | Badge de estado Online/Offline con color para cada terminal |
-| `t_hist1` / `t_hist2` | Último tráfico de voz: indicativo, TG y hora |
+| page0 | `t_hora`, `t_fecha`, `t_ip`, `t_temp`, `t_volt`, `t_mcc`, `ter1`-`ter3`, `t_st1`-`t_st3`, `t_hist1`-`t_hist2` |
+| page1 | `t_main`, `t_autor`, `t_tg`, `t_tipo`, `t_freq`, `t_log1`-`t_log4`, `p_flag`, `t_mcc_p1`, `t_provincia` |
+| page3 | `t_emerg_call`, `t_emerg_issi`, `t_emerg_tg`, `t_emerg_gps`, `t_ecalle`, `t_epob`, `t_emerg_hora` |
+| page4 | `t_sds`, `t_sfreq`, `t_smg`-`t_smg5` |
 
-### page3 — Emergencia
+### Pantalla 800×480 — sufijo `g` en todos los nombres
 
-| Componente | Descripción |
-|---|---|
-| `p_luz_i` / `p_luz_d` | Barras de luces policiales animadas que alternan |
-| `tm0` | Timer interno que controla el destello de las luces |
+Mismos componentes con `g` al final: `t_horag`, `ter1g`, `t_st1g`, `p_flagg`, `t_maingg`, etc.
 
 ---
 
@@ -140,13 +151,13 @@ Tras la instalación se pedirá **reiniciar** para activar el UART.
 
 ---
 
-## Configuración
+## Configuración manual
 
-Todos los parámetros se configuran durante la instalación. Para cambiarlos después, editar la sección `─── AJUSTES ───` en `tetra_nextion.py`:
+Editar la sección `─── AJUSTES ───` en `tetra_nextion.py`:
 
 ```python
-MONITOR_URL    = "http://localhost:5000"  # Vacío si no hay monitor
-SERIAL_PORT    = "/dev/serial0"           # /dev/ttyAMA0 en Pi 5
+SERIAL_PORT    = "/dev/serial0"    # Pi 5: /dev/ttyAMA0
+MONITOR_URL    = "http://localhost:5000"
 DEFAULT_TX     = "431.000MHz"
 DEFAULT_RX     = "438.600MHz"
 DEFAULT_MCC    = "001"
@@ -159,17 +170,10 @@ EMERGENCY_ISSI = "214112"
 ## Comandos útiles
 
 ```bash
-# Estado del servicio
 sudo systemctl status tetra-nextion
-
-# Ver logs en tiempo real
 journalctl -u tetra-nextion -f
-
-# Reiniciar el servicio
 sudo systemctl restart tetra-nextion
-
-# Ejecutar manualmente (depuración)
-python3 ~/tetra_nextion.py
+python3 ~/tetra_nextion.py        # ejecución manual
 ```
 
 ---
@@ -177,12 +181,14 @@ python3 ~/tetra_nextion.py
 ## Estructura del repositorio
 
 ```
-tetra-nextion/
-├── tetra_nextion.py              # Script principal (v4.0)
-├── install.sh                    # Instalador interactivo
-├── TETRA_V2.tft                  # HMI compilado 320×240 px
-├── TETRA_V2_800x480.tft          # HMI compilado 800×480 px
-└── README.md                     # Este archivo
+Tetra_JCT_Nextion_Display/
+├── tetra_nextion.py                       # Script principal (v4.1)
+├── install.sh                             # Instalador interactivo
+├── TETRA V2.tft                           # HMI compilado 320×240 px
+├── TETRA TJC8048X543 (800×480).tft        # HMI compilado 800×480 px
+├── Docs/
+│   └── MANUAL.md                          # Manual de usuario completo
+└── README.md
 ```
 
 ---
