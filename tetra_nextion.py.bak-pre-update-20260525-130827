@@ -35,7 +35,7 @@ from pathlib import Path
 # ─── AJUSTES (editar según instalación) ───────────────────────
 
 # Puerto serie de la pantalla TJC/Nextion
-SERIAL_PORT    = "/dev/serial0"    # Pi5: usar /dev/ttyAMA0
+SERIAL_PORT    = "/dev/serial0"
 BAUD_RATE      = 9600
 
 # TetraPack Monitor — dejar vacío ("") si no se usa monitor local
@@ -86,26 +86,7 @@ STATS_URL     = f"{MONITOR_URL}/api/system/stats" if MONITOR_URL else ""
 
 # ─── CONFIG.TOML ──────────────────────────────────────────────
 def read_config():
-    """Lee frecuencias y MCC/MNC de la estación activa (vía monitor, que corre como root)."""
-    # Preguntar al monitor cuál es el .service activo (systemctl) y leer SU config.toml.
-    # El monitor corre como root → puede leer /root/<estación>/config.toml (pi no puede).
-    if MONITOR_URL:
-        try:
-            act = requests.get(f"{MONITOR_URL}/api/station/active", timeout=5).json()
-            cfg_path = act["services"][act["station"]]["configPath"]
-            data = requests.get(f"{MONITOR_URL}/api/system/read-config",
-                                 params={"path": cfg_path}, timeout=5).json()
-            ni = data.get("net_info", {}) or {}
-            so = data.get("phy_io_soapysdr", {}) or {}
-            tx, rx = so.get("tx_freq"), so.get("rx_freq")
-            tx_mhz = f"{int(tx)/1e6:.3f}MHz" if tx else DEFAULT_TX
-            rx_mhz = f"{int(rx)/1e6:.3f}MHz" if rx else DEFAULT_RX
-            mcc = str(ni["mcc"]) if ni.get("mcc") is not None else DEFAULT_MCC
-            mnc = str(ni["mnc"]) if ni.get("mnc") is not None else DEFAULT_MNC
-            print(f"[config] Monitor: estación '{act['station']}' → MCC:{mcc} MNC:{mnc}")
-            return tx_mhz, rx_mhz, mcc, mnc
-        except Exception as e:
-            print(f"[config] Monitor sin config ({e}); pruebo archivo local...")
+    """Lee frecuencias y MCC/MNC del config.toml de bluestation-bs."""
     paths = [CONFIG_TOML] if CONFIG_TOML else []
     if not CONFIG_TOML:
         # Buscar automáticamente en el directorio home
@@ -155,36 +136,6 @@ def send(cmd):
 
 def txts(comp, val, maxlen=25):
     send(f'{comp}.txt="{str(val)[:maxlen]}"')
-
-def probe_display():
-    """Comprueba que hay una pantalla Nextion/TJC respondiendo por UART.
-    Si tras 3 intentos no contesta nada, sale limpio (exit 0) en vez de
-    quedarse corriendo a ciegas (p.ej. en la unidad que lleva la variante OLED).
-    El UART es de la Pi y se abre aunque no haya pantalla, por eso hace falta
-    un ping activo (a diferencia del I2C de la OLED, que se autodetecta)."""
-    if not (ser and ser.is_open):
-        print("[uart] Puerto serie no disponible — saliendo.", flush=True)
-        raise SystemExit(0)
-    for intento in range(1, 4):
-        try:
-            with ser_lock:
-                ser.reset_input_buffer()
-                ser.write(b"\xff\xff\xffconnect\xff\xff\xff")  # handshake Nextion -> 'comok ...'
-                ser.write(b"sendme\xff\xff\xff")               # -> 0x66 <page> FF FF FF
-            time.sleep(0.6)
-            with ser_lock:
-                n = ser.in_waiting
-                resp = ser.read(n) if n else b""
-            if resp:
-                print(f"[uart] Pantalla detectada (intento {intento}): {resp[:48]!r}", flush=True)
-                return True
-            print(f"[uart] Sin respuesta de pantalla (intento {intento}/3)...", flush=True)
-        except Exception as e:
-            print(f"[uart] Error en probe (intento {intento}): {e}", flush=True)
-        time.sleep(0.4)
-    print(f"[uart] Ninguna pantalla Nextion responde en {SERIAL_PORT}; "
-          "¿unidad con OLED? Saliendo sin reintentar.", flush=True)
-    raise SystemExit(0)
 
 # ─── RADIOID ──────────────────────────────────────────────────
 radioid_db = {}
@@ -853,7 +804,6 @@ def clock_standby():
 def main():
     print("[nextion] TETRA Nextion Display v3.3 - EA8DLF")
     init_serial()
-    probe_display()   # si no hay pantalla Nextion conectada, sale limpio (exit 0)
     time.sleep(1)
     send("page 0")
     current_page[0] = 0
