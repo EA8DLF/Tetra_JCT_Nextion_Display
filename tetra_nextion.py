@@ -363,7 +363,7 @@ def terminal_line(issi):
     if not t: return ""
     cs   = t["callsign"] or lookup(issi)[0]
     rssi = f"{t['rssi']:.0f}dB" if t["rssi"] != 0 else "---"
-    return f"{cs} {issi}  {rssi}  TG:{t['tg']}"
+    return f"{issi} {cs}  {rssi}  TG:{t['tg']}"
 
 def refresh_terminals():
     """Actualiza los 3 terminales en standby con color Online/Offline."""
