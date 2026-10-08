@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-# TETRA Nextion Display v4.1 - Instalador
+# TETRA Nextion Display v4.2 - Instalador
 # EA8DLF 2026 — https://github.com/EA8DLF/Tetra_JCT_Nextion_Display
 # ═══════════════════════════════════════════════════════════════
 
@@ -23,7 +23,7 @@ clear
 
 echo -e "${BLUE}${BOLD}"
 echo " ╔══════════════════════════════════════════════════════════╗"
-echo " ║     TETRA Nextion Display v4.1 - EA8DLF                 ║"
+echo " ║     TETRA Nextion Display v4.2 - EA8DLF                 ║"
 echo " ║     Instalador automático                                ║"
 echo " ║     Compatible: 320×240 | 800×480                       ║"
 echo " ╚══════════════════════════════════════════════════════════╝"
@@ -75,21 +75,23 @@ else
     echo -e "${GREEN}✅ journalctl disponible${NC}"
 fi
 
-# ── Instalar librerías Python ─────────────────────────────────
+echo -e "${GREEN}✅ Sin dependencias Python externas (solo librería estándar)${NC}"
+
+# ── Tamaño de pantalla ────────────────────────────────────────
 echo ""
-echo -e "${BOLD}[2/5] Instalando librerías Python...${NC}"
-
-pip3 install pyserial requests --break-system-packages 2>/dev/null || \
-pip install pyserial requests --break-system-packages 2>/dev/null || \
-pip3 install pyserial requests 2>/dev/null || \
-pip install pyserial requests 2>/dev/null || \
-{ echo -e "${RED}❌ Error instalando librerías. Instalar manualmente: pip install pyserial requests${NC}"; exit 1; }
-
-echo -e "${GREEN}✅ pyserial y requests instalados${NC}"
+echo -e "${BOLD}¿Qué pantalla tienes?${NC}"
+echo "  1) Pequeña — TJC3224T022/T028 (320×240)"
+echo "  2) Grande  — TJC8048X543 (800×480)"
+read -p "  Elige [1/2, por defecto 1]: " INPUT_SIZE
+case "$INPUT_SIZE" in
+    2) NEXTION_SIZE="800" ;;
+    *) NEXTION_SIZE="320" ;;
+esac
+echo -e "${GREEN}  ✅ Pantalla: ${NEXTION_SIZE}×...${NC}"
 
 # ── Detectar y configurar UART ────────────────────────────────
 echo ""
-echo -e "${BOLD}[3/5] Configurando UART...${NC}"
+echo -e "${BOLD}[2/4] Configurando UART...${NC}"
 
 SERIAL_PORT=""
 CONFIG_FILE=""
@@ -205,7 +207,7 @@ fi
 
 # ── Recopilar configuración TETRA ────────────────────────────
 echo ""
-echo -e "${BOLD}[4/5] Configuración de la red TETRA...${NC}"
+echo -e "${BOLD}[3/4] Configuración de la red TETRA...${NC}"
 echo -e "${CYAN}Pulsa ENTER para usar el valor por defecto [entre corchetes]${NC}"
 echo ""
 
@@ -256,7 +258,7 @@ read -p "  Tiempo mostrando emergencia [25]: "     INPUT_EMERG_DISP; EMERGENCY_D
 
 # ── Instalar el script ────────────────────────────────────────
 echo ""
-echo -e "${BOLD}[5/5] Instalando script...${NC}"
+echo -e "${BOLD}[4/4] Instalando script...${NC}"
 
 DEST_SCRIPT="$CURRENT_HOME/$SCRIPT_NAME"
 cp "$INSTALL_DIR/$SCRIPT_NAME" "$DEST_SCRIPT"
@@ -288,13 +290,15 @@ if [[ "$INPUT_SERVICE" =~ ^[Ss]$ ]]; then
 
     sudo tee "$SERVICE_FILE" > /dev/null << SERVICEEOF
 [Unit]
-Description=TETRA Nextion Display v4.1 - EA8DLF
+Description=TETRA Nextion Display v4.2 - EA8DLF
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=$CURRENT_USER
+# Tamaño de pantalla: "320" (TJC3224T0xx 320x240) o "800" (TJC8048X543 800x480)
+Environment=NEXTION_SIZE=$NEXTION_SIZE
 WorkingDirectory=$CURRENT_HOME
 ExecStart=/usr/bin/python3 $DEST_SCRIPT
 Restart=on-failure
@@ -336,6 +340,7 @@ echo " ╚═══════════════════════�
 echo -e "${NC}"
 echo ""
 echo -e "  Script:    ${BOLD}$DEST_SCRIPT${NC}"
+echo -e "  Pantalla:  ${BOLD}${NEXTION_SIZE}×...${NC}"
 echo -e "  Puerto:    ${BOLD}$SERIAL_PORT${NC} @ ${BOLD}${BAUD_RATE}${NC} bd"
 echo -e "  TX/RX:     ${BOLD}$DEFAULT_TX / $DEFAULT_RX${NC}"
 echo -e "  MCC/MNC:   ${BOLD}$DEFAULT_MCC / $DEFAULT_MNC${NC}"

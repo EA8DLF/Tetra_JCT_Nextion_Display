@@ -1,4 +1,4 @@
-# TETRA Nextion Display v4.1
+# TETRA Nextion Display v4.2
 
 Monitor de red TETRA en tiempo real para pantalla TJC/Nextion conectada a Raspberry Pi mediante UART.
 
@@ -6,10 +6,16 @@ Desarrollado por **EA8DLF** · 2026
 
 ---
 
+## Novedades v4.2
+
+- 🖥️🤝🖥️ **Un solo script para las dos pantallas** — selector `NEXTION_SIZE` (`320`/`800`) en el `.service`, mismo script instalado en ambas, sin ramas de código paralelas
+- 🔴 **Online/Offline ya no se queda pegado en verde** — se detecta por timeout de inactividad en vez de por un evento de log de "baja" que estaciones base como nexus-bs nunca emiten
+- 🏢 **Varias estaciones base** — reconoce `bluestation-bs`, FlowStation y Nexus-BS (comparten el mismo motor `tetra-bluestation`); si no hay monitor HTTP, lee el journal de la unidad systemd autodetectada o fijada con `JOURNAL_UNIT`
+- ⚙️ **Todo configurable por variable de entorno** — `TETRA_*` para puerto, baudrate, monitor, journal, red TETRA y tiempos de pantalla, sin tocar el `.py`
+- 🧯 **Sale limpio si no hay pantalla Nextion conectada** — evita quedarse corriendo a ciegas en una unidad con variante OLED
+
 ## Novedades v4.1
 
-- 🔀 **Soporte dual-pantalla sin conflictos** — un solo script para 320×240 y 800×480 simultáneamente
-- 🏷️ **Componentes 800×480 renombrados con sufijo `g`** — elimina colisiones de nombres entre HMIs
 - 🍓 **Corrección Raspberry Pi 5** — puerto UART correcto (`/dev/ttyAMA0`) y eliminación automática de consola serie
 - 🔗 **URL repositorio corregida** — `https://github.com/EA8DLF/Tetra_JCT_Nextion_Display`
 
@@ -154,9 +160,9 @@ Mismos componentes con `g` al final: `t_horag`, `ter1g`, `t_st1g`, `p_flagg`, `t
 ## Requisitos
 
 - Python 3.7+
-- `pip install pyserial requests`
-- systemd (para lectura de texto SDS del journal)
-- TetraPack Monitor con bluestation-bs (opcional pero recomendado)
+- Ninguna librería externa — solo la librería estándar (`termios`, `urllib`)
+- systemd (para journalctl: lectura de texto SDS y, sin monitor, el stream de eventos)
+- Monitor HTTP (TetraPack/brew-server) opcional — sin él, se lee el journal de la estación base directamente
 
 ---
 
@@ -181,7 +187,10 @@ Tras editar el `.service`: `sudo systemctl daemon-reload && sudo systemctl resta
 | `TETRA_SERIAL_PORT` | Puerto serie de la pantalla | `/dev/serial0` |
 | `TETRA_BAUD_RATE` | Baudrate de la pantalla | `9600` |
 | `TETRA_MONITOR_URL` | URL de TetraPack Monitor | `http://localhost:5000` |
-| `TETRA_CONFIG_TOML` | Ruta al `config.toml` de bluestation-bs | autodetección |
+| `TETRA_JOURNAL_UNIT` | Unidad systemd de la estación base (sin monitor) | autodetección |
+| `TETRA_TERMINAL_OFFLINE_SEC` | Segundos sin noticias de un terminal → offline/rojo | `180` |
+| `NEXTION_SIZE` | Tamaño de pantalla: `320` o `800` (sin prefijo `TETRA_`, va en el `.service`) | `320` |
+| `TETRA_CONFIG_TOML` | Ruta al `config.toml` de bluestation-bs/FlowStation/Nexus-BS | autodetección |
 | `TETRA_DEFAULT_TX` / `TETRA_DEFAULT_RX` | Frecuencias TX/RX por defecto | `431.000MHz` / `438.600MHz` |
 | `TETRA_DEFAULT_MCC` / `TETRA_DEFAULT_MNC` | MCC/MNC por defecto | `001` / `001` |
 | `TETRA_EMERGENCY_ISSI` | ISSI del servidor de emergencias | `214112` |
@@ -224,7 +233,7 @@ python3 ~/tetra_nextion.py        # ejecución manual
 
 ```
 Tetra_JCT_Nextion_Display/
-├── tetra_nextion.py                       # Script principal (v4.1)
+├── tetra_nextion.py                       # Script principal (v4.2)
 ├── install.sh                             # Instalador interactivo
 ├── TETRA V2.tft                           # HMI compilado 320×240 px
 ├── TETRA TJC8048X543 (800×480).tft        # HMI compilado 800×480 px
