@@ -65,14 +65,14 @@ Desarrollado por **EA8DLF** · 2026
 |---|---|---|
 | **TJC Enhanced** | TJC8048X543 | 5" |
 
-> Cada resolución requiere su propio archivo `.tft`. El script Python es el mismo para ambas,
-> **siempre que los componentes del HMI que grabes en la pantalla se llamen igual que en
-> `tetra_nextion.py`** (`t_hora`, `p_flag`, `t_main`, etc. — ver tabla de componentes más abajo).
-> El script actual no detecta el modelo de pantalla ni cambia de nombres de componente por sí
-> solo: si tu HMI 800×480 usa nombres distintos (p.ej. con sufijo `g`), tendrás que ajustarlos
-> en el editor Nextion/TJC para que coincidan, o decírselo al script. Esto es justo lo que
-> obligó a tocar el código a mano al instalar en una pantalla distinta — pendiente de resolver
-> con una selección explícita de modelo si hace falta soportar nombres de componente distintos.
+> Cada resolución requiere su propio archivo `.tft`, pero **el script Python es el mismo
+> para las dos pantallas y usa los mismos nombres de componente en ambas** (`t_hora`,
+> `ter1`-`ter3`, `t_st1`-`t_st3`, etc. — ver tabla de componentes más abajo). La variable
+> de entorno `NEXTION_SIZE` (`320` o `800`, la pregunta el instalador) solo decide qué
+> contenido extra se envía — p.ej. `t_hist1`/`t_hist2` (historial) y las etiquetas largas
+> de temperatura/voltaje solo tienen sentido en la pantalla grande. Si el HMI 320×240 no
+> tiene esos componentes, los comandos correspondientes simplemente se ignoran (Nextion
+> descarta sin error los comandos a componentes inexistentes).
 
 ---
 
@@ -98,11 +98,13 @@ bash install.sh
 ```
 
 El instalador:
+- Pregunta el tamaño de pantalla (320×240 o 800×480) y lo deja fijado como `NEXTION_SIZE` en el servicio
 - Detecta automáticamente el modelo de Raspberry Pi (incluida Pi 5)
 - Configura el UART en `/boot/firmware/config.txt` o `/boot/config.txt`
 - **Pi 5:** elimina `console=serial0` de `cmdline.txt` automáticamente
 - Detecta el puerto serie disponible (`/dev/ttyAMA0` en Pi 5, o un adaptador USB-serie si no hay UART GPIO) y te deja confirmarlo o escribir otro
 - Pregunta el baudrate de tu pantalla (9600 por defecto; algunas pantallas grandes usan otro)
+- Pregunta si tienes un monitor HTTP (TetraPack/brew-server); si no, autodetecta o pregunta la unidad systemd de tu estación base (bluestation-bs/FlowStation/Nexus-BS) para leer su journal directamente
 - Pregunta los datos de tu red TETRA (TX/RX, MCC, MNC, ISSI emergencias)
 - Instala el script (con tu usuario y tu `$HOME`, sin rutas fijas) y crea el servicio systemd
 
@@ -142,18 +144,16 @@ Tras la instalación se pedirá **reiniciar** para aplicar todos los cambios.
 
 ## Componentes HMI
 
-### Pantalla 320×240 — nombres originales
+Mismos nombres de componente en las dos pantallas. `t_hist1`/`t_hist2` (historial de
+standby) solo se envían con `NEXTION_SIZE=800`; el resto se envía siempre, y si el HMI
+320×240 no tiene un componente, Nextion ignora ese comando sin problema.
 
 | Página | Componentes |
 |---|---|
-| page0 | `t_hora`, `t_fecha`, `t_ip`, `t_temp`, `t_volt`, `t_mcc`, `ter1`-`ter3`, `t_st1`-`t_st3`, `t_hist1`-`t_hist2` |
-| page1 | `t_main`, `t_autor`, `t_tg`, `t_tipo`, `t_freq`, `t_log1`-`t_log4`, `p_flag`, `t_mcc_p1`, `t_provincia` |
+| page0 | `t_hora`, `t_fecha`, `t_ip`, `t_temp`, `t_volt`, `t_mcc`, `ter1`-`ter3`, `t_st1`-`t_st3`, `t_hist1`-`t_hist2` (solo 800×480) |
+| page1 | `t_main`, `t_tg`, `t_tipo`, `t_freq`, `t_log1`-`t_log4`, `p_flag`, `t_mcc_p1`, `t_provincia` |
 | page3 | `t_emerg_call`, `t_emerg_issi`, `t_emerg_tg`, `t_emerg_gps`, `t_ecalle`, `t_epob`, `t_emerg_hora` |
-| page4 | `t_sds`, `t_sfreq`, `t_smg`-`t_smg5` |
-
-### Pantalla 800×480 — sufijo `g` en todos los nombres
-
-Mismos componentes con `g` al final: `t_horag`, `ter1g`, `t_st1g`, `p_flagg`, `t_maingg`, etc.
+| page4 | `t_sds`, `t_sfreq`, `t_smg`-`t_smg5` (solo 3 campos `t_smg`-`t_smg3` en 320×240) |
 
 ---
 

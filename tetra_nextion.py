@@ -660,18 +660,14 @@ def in_voice_protection():
     return time.time() - voice_end_time[0] < SDS_BLOCK_TIME
 
 # ─── PANTALLA STANDBY (page0) ─────────────────────────────────
-def show_standby():
-    if current_page[0] != 0:
-        send("page 0")
-        current_page[0] = 0
-        time.sleep(0.1)
+def refresh_stats_fields():
+    """IP, temperatura y voltaje en standby. Se llama al arrancar y
+    periódicamente desde clock_standby(), no solo al volver de una llamada,
+    para que se vean desde el primer momento aunque no entre tráfico."""
     temp = stats.get("cpuTemp", 0)
     volt = stats.get("voltage", 0)
     ip   = stats.get("localIp", "---")
     volt_str = f"{volt:.1f}V" if volt > 0 else "---V"
-
-    txts("t_hora",  hora(), 10)
-    txts("t_fecha", datetime.now().astimezone().strftime("%d/%m/%Y"), 12)
     txts("t_ip",    f"IP: {ip}", 22)
     if _SMALL:
         # En 320 temp/voltaje van sin etiqueta (solo el valor) para que no se salgan
@@ -680,6 +676,15 @@ def show_standby():
     else:
         txts("t_temp", f"Temp: {temp:.1f}\xb0C", 14)
         txts("t_volt", f"Voltaje: {volt_str}", 14)
+
+def show_standby():
+    if current_page[0] != 0:
+        send("page 0")
+        current_page[0] = 0
+        time.sleep(0.1)
+    txts("t_hora",  hora(), 10)
+    txts("t_fecha", datetime.now().astimezone().strftime("%d/%m/%Y"), 12)
+    refresh_stats_fields()
     txts("t_mcc",   f"MCC:{MCC} MNC:{MNC}", 20)
 
     # Último tráfico de voz (solo pantalla 800×480; no existe en 320×240)
@@ -1095,7 +1100,7 @@ def main_loop():
 
 # ─── RELOJ STANDBY ────────────────────────────────────────────
 def clock_standby():
-    """Actualiza el reloj en standby y refresca terminales cada 10s."""
+    """Actualiza el reloj en standby y refresca terminales/IP/temp/voltaje cada 10s."""
     last = ""
     tick = 0
     while True:
@@ -1108,6 +1113,7 @@ def clock_standby():
                 txts("t_hora", h, 10)
             if tick % 10 == 0:
                 refresh_terminals()
+                refresh_stats_fields()
 
 # ─── MAIN ─────────────────────────────────────────────────────
 def main():
@@ -1115,14 +1121,18 @@ def main():
     print("[nextion] Compatible: TJC3224T028 (320×240) | TJC8048X543 (800×480)")
     init_serial()
     probe_display()   # si no hay pantalla Nextion conectada, sale limpio (exit 0)
-    time.sleep(1)
+
+    # fetch_stats() arranca antes de pintar nada para que IP/temp/voltaje salgan
+    # ya en el primer show_standby(), no solo tras la primera llamada
+    threading.Thread(target=load_radioid,              daemon=True).start()
+    threading.Thread(target=fetch_stats,               daemon=True).start()
+    time.sleep(1.5)
+
     send("page 0")
     current_page[0] = 0
     time.sleep(0.2)
     show_standby()
 
-    threading.Thread(target=load_radioid,              daemon=True).start()
-    threading.Thread(target=fetch_stats,               daemon=True).start()
     threading.Thread(target=stream_logs,               daemon=True).start()
     threading.Thread(target=clock_standby,             daemon=True).start()
     threading.Thread(target=init_terminals_from_journal, daemon=True).start()
