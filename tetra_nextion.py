@@ -432,22 +432,32 @@ def terminal_line(issi):
     return f"{issi} {cs}  {rssi}  TG:{t['tg']}"
 
 def refresh_terminals():
-    """Actualiza los 3 terminales en standby con color Online/Offline."""
+    """Actualiza los 3 terminales en standby: texto + color, y badge Online/Offline."""
     if STATE[0] != "STANDBY":
         return
     sorted_t = [issi for issi, _ in sorted(
         terminals.items(), key=lambda x: x[1]["rssi_time"], reverse=True
     )]
     for i in range(1, 4):
-        comp = f"ter{i}"
+        comp    = f"ter{i}"
+        st_comp = f"t_st{i}"
         if i-1 < len(sorted_t):
             issi   = sorted_t[i-1]
             online = terminal_online(issi)
             send(f"{comp}.pco={2016 if online else 63488}")
             txts(comp, terminal_line(issi), 35)
+            if online:
+                txts(st_comp, "Online", 8)
+                send(f"{st_comp}.pco=2024")   # verde #00FF44
+                send(f"{st_comp}.bco=384")    # fondo verde oscuro #003300
+            else:
+                txts(st_comp, "Offline", 8)
+                send(f"{st_comp}.pco=63488")  # rojo #FF0000
+                send(f"{st_comp}.bco=6144")   # fondo rojo oscuro #1A0000
         else:
             send(f"{comp}.pco=2047")
             txts(comp, "", 35)
+            txts(st_comp, "", 8)
 
 def init_terminals_from_journal():
     """Lee el journal para conocer el estado Online/Offline al arrancar.
