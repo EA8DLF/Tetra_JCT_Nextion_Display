@@ -462,9 +462,17 @@ def fetch_stats():
                     stats["cpuTemp"] = int(f.read()) / 1000.0
             except: pass
             try:
-                r2 = subprocess.run(["vcgencmd","measure_volts"],
+                # EXT5V_V (riel de 5V de alimentación) si hay PMIC con ADC (Pi 4/5).
+                # En Pi 3 y anteriores no existe ese chip, así que se cae a
+                # "measure_volts" (voltaje del núcleo, ~1.0-1.4V es normal ahí
+                # — no es un fallo, es lo único que esa placa puede medir).
+                r2 = subprocess.run(["vcgencmd", "pmic_read_adc"],
                                     capture_output=True, text=True, timeout=2)
-                v = re.search(r"volt=([\d.]+)", r2.stdout)
+                v = re.search(r"EXT5V_V\s+volt\(\d+\)=([\d.]+)V", r2.stdout)
+                if not v:
+                    r2 = subprocess.run(["vcgencmd", "measure_volts"],
+                                        capture_output=True, text=True, timeout=2)
+                    v = re.search(r"volt=([\d.]+)", r2.stdout)
                 if v: stats["voltage"] = float(v.group(1))
             except: pass
             try:
