@@ -52,7 +52,7 @@
 # ═══════════════════════════════════════════════════════════════
 
 import re, json, time, threading, os, csv, socket, subprocess, termios, shutil, fcntl, struct
-import urllib.request
+import urllib.request, urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -203,7 +203,30 @@ def _journal_unit_args():
 
 # ─── CONFIG.TOML ──────────────────────────────────────────────
 def read_config():
-    """Lee frecuencias y MCC/MNC del config.toml de bluestation-bs."""
+    """Lee frecuencias y MCC/MNC de la estación activa (vía monitor, que corre
+    como root) o, si no hay monitor, del config.toml de bluestation-bs/
+    FlowStation/Nexus-BS."""
+    # Preguntar al monitor cuál es el .service activo (systemctl) y leer SU config.toml.
+    # El monitor corre como root → puede leer /root/<estación>/config.toml (pi no puede).
+    if MONITOR_URL:
+        try:
+            with urllib.request.urlopen(f"{MONITOR_URL}/api/station/active", timeout=5) as r:
+                act = json.loads(r.read().decode("utf-8", "replace"))
+            cfg_path = act["services"][act["station"]]["configPath"]
+            url = f"{MONITOR_URL}/api/system/read-config?path={urllib.parse.quote(cfg_path)}"
+            with urllib.request.urlopen(url, timeout=5) as r:
+                data = json.loads(r.read().decode("utf-8", "replace"))
+            ni = data.get("net_info", {}) or {}
+            so = data.get("phy_io_soapysdr", {}) or {}
+            tx, rx = so.get("tx_freq"), so.get("rx_freq")
+            tx_mhz = f"{int(tx)/1e6:.3f}MHz" if tx else DEFAULT_TX
+            rx_mhz = f"{int(rx)/1e6:.3f}MHz" if rx else DEFAULT_RX
+            mcc = str(ni["mcc"]) if ni.get("mcc") is not None else DEFAULT_MCC
+            mnc = str(ni["mnc"]) if ni.get("mnc") is not None else DEFAULT_MNC
+            print(f"[config] Monitor: estación '{act['station']}' → MCC:{mcc} MNC:{mnc}")
+            return tx_mhz, rx_mhz, mcc, mnc
+        except Exception as e:
+            print(f"[config] Monitor sin config ({e}); pruebo archivo local...")
     paths = [CONFIG_TOML] if CONFIG_TOML else []
     if not CONFIG_TOML:
         for p in sorted(Path.home().rglob("config.toml")):
