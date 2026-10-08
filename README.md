@@ -59,8 +59,14 @@ Desarrollado por **EA8DLF** · 2026
 |---|---|---|
 | **TJC Enhanced** | TJC8048X543 | 5" |
 
-> Cada resolución requiere su propio archivo `.tft`. El script Python es el mismo para ambas.
-> Los componentes del HMI 800×480 llevan sufijo `g` para evitar conflictos con el HMI 320×240.
+> Cada resolución requiere su propio archivo `.tft`. El script Python es el mismo para ambas,
+> **siempre que los componentes del HMI que grabes en la pantalla se llamen igual que en
+> `tetra_nextion.py`** (`t_hora`, `p_flag`, `t_main`, etc. — ver tabla de componentes más abajo).
+> El script actual no detecta el modelo de pantalla ni cambia de nombres de componente por sí
+> solo: si tu HMI 800×480 usa nombres distintos (p.ej. con sufijo `g`), tendrás que ajustarlos
+> en el editor Nextion/TJC para que coincidan, o decírselo al script. Esto es justo lo que
+> obligó a tocar el código a mano al instalar en una pantalla distinta — pendiente de resolver
+> con una selección explícita de modelo si hace falta soportar nombres de componente distintos.
 
 ---
 
@@ -89,9 +95,12 @@ El instalador:
 - Detecta automáticamente el modelo de Raspberry Pi (incluida Pi 5)
 - Configura el UART en `/boot/firmware/config.txt` o `/boot/config.txt`
 - **Pi 5:** elimina `console=serial0` de `cmdline.txt` automáticamente
-- Detecta el puerto serie disponible (`/dev/ttyAMA0` en Pi 5)
+- Detecta el puerto serie disponible (`/dev/ttyAMA0` en Pi 5, o un adaptador USB-serie si no hay UART GPIO) y te deja confirmarlo o escribir otro
+- Pregunta el baudrate de tu pantalla (9600 por defecto; algunas pantallas grandes usan otro)
 - Pregunta los datos de tu red TETRA (TX/RX, MCC, MNC, ISSI emergencias)
-- Instala el script y crea el servicio systemd
+- Instala el script (con tu usuario y tu `$HOME`, sin rutas fijas) y crea el servicio systemd
+
+No hace falta editar `tetra_nextion.py` a mano para usar otra pantalla, otro puerto o otra Raspberry: todo se pregunta en la instalación.
 
 ---
 
@@ -153,10 +162,43 @@ Mismos componentes con `g` al final: `t_horag`, `ter1g`, `t_st1g`, `p_flagg`, `t
 
 ## Configuración manual
 
-Editar la sección `─── AJUSTES ───` en `tetra_nextion.py`:
+### Opción A — variables de entorno (recomendado, sin tocar el código)
+
+Cualquier ajuste se puede sobrescribir con una variable de entorno `TETRA_*`,
+sin editar `tetra_nextion.py` ni reinstalar. Útil para cambiar de pantalla,
+puerto o máquina. Ejemplo en el servicio systemd (`/etc/systemd/system/tetra-nextion.service`):
+
+```ini
+[Service]
+Environment=TETRA_SERIAL_PORT=/dev/ttyUSB0
+Environment=TETRA_BAUD_RATE=115200
+```
+
+Tras editar el `.service`: `sudo systemctl daemon-reload && sudo systemctl restart tetra-nextion`
+
+| Variable | Ajuste que sobrescribe | Por defecto |
+|---|---|---|
+| `TETRA_SERIAL_PORT` | Puerto serie de la pantalla | `/dev/serial0` |
+| `TETRA_BAUD_RATE` | Baudrate de la pantalla | `9600` |
+| `TETRA_MONITOR_URL` | URL de TetraPack Monitor | `http://localhost:5000` |
+| `TETRA_CONFIG_TOML` | Ruta al `config.toml` de bluestation-bs | autodetección |
+| `TETRA_DEFAULT_TX` / `TETRA_DEFAULT_RX` | Frecuencias TX/RX por defecto | `431.000MHz` / `438.600MHz` |
+| `TETRA_DEFAULT_MCC` / `TETRA_DEFAULT_MNC` | MCC/MNC por defecto | `001` / `001` |
+| `TETRA_EMERGENCY_ISSI` | ISSI del servidor de emergencias | `214112` |
+| `TETRA_STANDBY_TIMEOUT` | Segundos inactivo → standby | `20` |
+| `TETRA_CALL_MIN_DISPLAY` | Segundos mínimos tras soltar PTT | `20` |
+| `TETRA_SDS_DISPLAY` | Segundos mostrando SDS texto | `15` |
+| `TETRA_SDS_BLOCK_TIME` | Segundos de bloqueo SDS tras voz | `30` |
+| `TETRA_EMERGENCY_DISPLAY` | Segundos mostrando emergencia | `25` |
+
+### Opción B — editar el script instalado
+
+Editar la sección `─── AJUSTES ───` en `tetra_nextion.py` (son los valores
+por defecto; una variable de entorno de la tabla anterior siempre tiene prioridad):
 
 ```python
 SERIAL_PORT    = "/dev/serial0"    # Pi 5: /dev/ttyAMA0
+BAUD_RATE      = 9600
 MONITOR_URL    = "http://localhost:5000"
 DEFAULT_TX     = "431.000MHz"
 DEFAULT_RX     = "438.600MHz"

@@ -33,10 +33,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 # ─── AJUSTES (editar según instalación) ───────────────────────
+# install.sh ya rellena estos valores por ti. Si necesitas cambiar algo
+# DESPUÉS de instalar (otra pantalla, otro puerto, otra Pi...) no hace
+# falta tocar este fichero: todos tienen una variable de entorno
+# equivalente (ver bloque "OVERRIDES" más abajo y el README).
 
 # Puerto serie de la pantalla TJC/Nextion
 SERIAL_PORT    = "/dev/serial0"    # Pi5: usar /dev/ttyAMA0
-BAUD_RATE      = 9600
+BAUD_RATE      = 9600              # Algunas pantallas grandes (p.ej. TJC8048X543) usan otro baudrate
 
 # TetraPack Monitor — dejar vacío ("") si no se usa monitor local
 MONITOR_URL    = "http://localhost:5000"
@@ -61,6 +65,26 @@ CALL_MIN_DISPLAY  = 20   # Mínimo en pantalla tras soltar PTT
 SDS_DISPLAY       = 15   # Tiempo mostrando SDS texto
 SDS_BLOCK_TIME    = 30   # Bloqueo SDS tras llamada de voz
 EMERGENCY_DISPLAY = 25   # Tiempo mostrando emergencia
+
+# ─── OVERRIDES por variable de entorno (opcional) ─────────────
+# Permiten cambiar cualquier ajuste sin editar el código ni reinstalar:
+# útil para otra pantalla/puerto/máquina, o para probar un valor desde
+# el propio servicio systemd (sección [Service] → Environment=...).
+# Si la variable no está definida se mantiene el valor de arriba.
+SERIAL_PORT       = os.environ.get("TETRA_SERIAL_PORT", SERIAL_PORT)
+BAUD_RATE         = int(os.environ.get("TETRA_BAUD_RATE", BAUD_RATE))
+MONITOR_URL       = os.environ.get("TETRA_MONITOR_URL", MONITOR_URL)
+CONFIG_TOML       = os.environ.get("TETRA_CONFIG_TOML", CONFIG_TOML)
+DEFAULT_TX        = os.environ.get("TETRA_DEFAULT_TX", DEFAULT_TX)
+DEFAULT_RX        = os.environ.get("TETRA_DEFAULT_RX", DEFAULT_RX)
+DEFAULT_MCC       = os.environ.get("TETRA_DEFAULT_MCC", DEFAULT_MCC)
+DEFAULT_MNC       = os.environ.get("TETRA_DEFAULT_MNC", DEFAULT_MNC)
+EMERGENCY_ISSI    = os.environ.get("TETRA_EMERGENCY_ISSI", EMERGENCY_ISSI)
+STANDBY_TIMEOUT   = int(os.environ.get("TETRA_STANDBY_TIMEOUT", STANDBY_TIMEOUT))
+CALL_MIN_DISPLAY  = int(os.environ.get("TETRA_CALL_MIN_DISPLAY", CALL_MIN_DISPLAY))
+SDS_DISPLAY       = int(os.environ.get("TETRA_SDS_DISPLAY", SDS_DISPLAY))
+SDS_BLOCK_TIME    = int(os.environ.get("TETRA_SDS_BLOCK_TIME", SDS_BLOCK_TIME))
+EMERGENCY_DISPLAY = int(os.environ.get("TETRA_EMERGENCY_DISPLAY", EMERGENCY_DISPLAY))
 
 # ISSIs de sistema — nunca muestran VOZ ni SDS
 SYSTEM_ISSI  = {"9999", "200999", "5000"}

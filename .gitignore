@@ -1,0 +1,8 @@
+# Backups de edición manual (nano/sed suelen crear estos nombres) — nunca versionar
+*.bak
+*.bak-*
+*~
+
+# Bytecode Python
+__pycache__/
+*.pyc

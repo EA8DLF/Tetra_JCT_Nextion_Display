@@ -154,6 +154,12 @@ else
     elif [ -e /dev/ttyS0 ]; then
         SERIAL_PORT="/dev/ttyS0"
         echo -e "${YELLOW}⚠️  Puerto detectado: /dev/ttyS0${NC}"
+    elif [ -e /dev/ttyUSB0 ]; then
+        SERIAL_PORT="/dev/ttyUSB0"
+        echo -e "${YELLOW}⚠️  Puerto detectado (adaptador USB-serie): /dev/ttyUSB0${NC}"
+    elif [ -e /dev/ttyACM0 ]; then
+        SERIAL_PORT="/dev/ttyACM0"
+        echo -e "${YELLOW}⚠️  Puerto detectado (adaptador USB-serie): /dev/ttyACM0${NC}"
     fi
 
     if [ -n "$CONFIG_FILE" ]; then
@@ -175,6 +181,19 @@ if [ -z "$SERIAL_PORT" ]; then
     SERIAL_PORT="/dev/serial0"
     echo -e "${YELLOW}⚠️  Puerto no detectado. Usando /dev/serial0 por defecto${NC}"
 fi
+
+# Permitir confirmar/corregir el puerto detectado (p.ej. si la pantalla
+# va por un adaptador USB-serie distinto, o la autodetección se equivoca)
+echo ""
+read -p "  Puerto serie a usar [$SERIAL_PORT]: " INPUT_SERIAL_PORT
+SERIAL_PORT="${INPUT_SERIAL_PORT:-$SERIAL_PORT}"
+echo -e "${GREEN}✅ Puerto serie: $SERIAL_PORT${NC}"
+
+# Baudrate de la pantalla (pantallas grandes como la TJC8048X543 pueden
+# venir configuradas a otro baudrate distinto del habitual 9600)
+read -p "  Baudrate de la pantalla [9600]: " INPUT_BAUD_RATE
+BAUD_RATE="${INPUT_BAUD_RATE:-9600}"
+echo -e "${GREEN}✅ Baudrate: $BAUD_RATE${NC}"
 
 # Añadir usuario al grupo dialout
 if ! groups "$CURRENT_USER" | grep -q dialout; then
@@ -232,12 +251,13 @@ sed -i "s|DEFAULT_MCC    = \"001\"|DEFAULT_MCC    = \"$DEFAULT_MCC\"|"          
 sed -i "s|DEFAULT_MNC    = \"001\"|DEFAULT_MNC    = \"$DEFAULT_MNC\"|"                   "$DEST_SCRIPT"
 sed -i "s|EMERGENCY_ISSI = \"214112\"|EMERGENCY_ISSI = \"$EMERGENCY_ISSI\"|"             "$DEST_SCRIPT"
 sed -i "s|SERIAL_PORT    = \"/dev/serial0\"|SERIAL_PORT    = \"$SERIAL_PORT\"|"          "$DEST_SCRIPT"
+sed -i "s|BAUD_RATE      = 9600|BAUD_RATE      = $BAUD_RATE|"                           "$DEST_SCRIPT"
 sed -i "s|CALL_MIN_DISPLAY  = 20|CALL_MIN_DISPLAY  = $CALL_MIN_DISPLAY|"                 "$DEST_SCRIPT"
 sed -i "s|SDS_DISPLAY       = 15|SDS_DISPLAY       = $SDS_DISPLAY|"                     "$DEST_SCRIPT"
 sed -i "s|EMERGENCY_DISPLAY = 25|EMERGENCY_DISPLAY = $EMERGENCY_DISPLAY|"               "$DEST_SCRIPT"
 
 echo -e "${GREEN}✅ Script instalado: $DEST_SCRIPT${NC}"
-echo -e "${GREEN}✅ Puerto configurado: $SERIAL_PORT${NC}"
+echo -e "${GREEN}✅ Puerto configurado: $SERIAL_PORT @ ${BAUD_RATE}bd${NC}"
 
 # ── Crear servicio systemd ────────────────────────────────────
 echo ""
@@ -298,7 +318,7 @@ echo " ╚═══════════════════════�
 echo -e "${NC}"
 echo ""
 echo -e "  Script:    ${BOLD}$DEST_SCRIPT${NC}"
-echo -e "  Puerto:    ${BOLD}$SERIAL_PORT${NC}"
+echo -e "  Puerto:    ${BOLD}$SERIAL_PORT${NC} @ ${BOLD}${BAUD_RATE}${NC} bd"
 echo -e "  TX/RX:     ${BOLD}$DEFAULT_TX / $DEFAULT_RX${NC}"
 echo -e "  MCC/MNC:   ${BOLD}$DEFAULT_MCC / $DEFAULT_MNC${NC}"
 echo -e "  Monitor:   ${BOLD}${MONITOR_URL:-Sin monitor}${NC}"
