@@ -441,7 +441,18 @@ def get_flag(callsign):
     return 2, ""
 
 # ─── STATS DEL SISTEMA ────────────────────────────────────────
-stats = {"cpuTemp": 0, "voltage": 0, "localIp": "---"}
+stats = {"cpuTemp": 0, "voltage": 0, "volt_small": "---V", "volt_big": "Voltaje: ---V", "localIp": "---"}
+
+def _set_voltage(value=None, status=None):
+    """value: voltaje numérico real. status: 'OK'/'BAJO!' cuando no hay
+    forma de medir voltios (Pi sin PMIC) y solo se sabe si hay subtensión."""
+    if value is not None:
+        stats["voltage"]   = value
+        stats["volt_small"] = f"{value:.1f}V"
+        stats["volt_big"]   = f"Voltaje: {value:.1f}V"
+    elif status is not None:
+        stats["volt_small"] = f"5V {status}"
+        stats["volt_big"]   = f"Voltaje: {status}"
 
 def fetch_stats():
     """Lee temperatura, voltaje e IP. Usa monitor si está disponible."""
@@ -451,8 +462,9 @@ def fetch_stats():
             try:
                 with urllib.request.urlopen(STATS_URL, timeout=5) as r:
                     data = json.loads(r.read().decode("utf-8", "replace"))
-                stats["cpuTemp"] = float(data.get("cpuTemp") or 0)
-                stats["voltage"]  = float(data.get("voltage") or 0)
+                stats["cpuTemp"]  = float(data.get("cpuTemp") or 0)
+                v = float(data.get("voltage") or 0)
+                if v > 0: _set_voltage(value=v)
                 stats["localIp"]  = str(data.get("localIp") or "---")
                 updated = True
             except: pass
@@ -463,17 +475,30 @@ def fetch_stats():
             except: pass
             try:
                 # EXT5V_V (riel de 5V de alimentación) si hay PMIC con ADC (Pi 4/5).
-                # En Pi 3 y anteriores no existe ese chip, así que se cae a
-                # "measure_volts" (voltaje del núcleo, ~1.0-1.4V es normal ahí
-                # — no es un fallo, es lo único que esa placa puede medir).
                 r2 = subprocess.run(["vcgencmd", "pmic_read_adc"],
                                     capture_output=True, text=True, timeout=2)
                 v = re.search(r"EXT5V_V\s+volt\(\d+\)=([\d.]+)V", r2.stdout)
-                if not v:
-                    r2 = subprocess.run(["vcgencmd", "measure_volts"],
+                if v:
+                    _set_voltage(value=float(v.group(1)))
+                else:
+                    # Sin PMIC (Pi 3 y anteriores): no hay forma de leer el riel de
+                    # 5V. "measure_volts" solo da el voltaje del núcleo (~1-1.4V),
+                    # que confunde más que ayuda, así que se usa el estado de
+                    # subtensión de get_throttled — es lo que de verdad importa
+                    # (si la alimentación es insuficiente) y existe en toda Pi.
+                    r3 = subprocess.run(["vcgencmd", "get_throttled"],
                                         capture_output=True, text=True, timeout=2)
-                    v = re.search(r"volt=([\d.]+)", r2.stdout)
-                if v: stats["voltage"] = float(v.group(1))
+                    m = re.search(r"throttled=(0x[0-9a-fA-F]+)", r3.stdout)
+                    bits = int(m.group(1), 16) if m else None
+                    if bits is None:
+                        r2 = subprocess.run(["vcgencmd", "measure_volts"],
+                                            capture_output=True, text=True, timeout=2)
+                        v = re.search(r"volt=([\d.]+)", r2.stdout)
+                        if v: _set_voltage(value=float(v.group(1)))
+                    elif bits & 0x1:
+                        _set_voltage(status="BAJO!")
+                    else:
+                        _set_voltage(status="OK")
             except: pass
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -628,9 +653,8 @@ def fecha_hora():
 def fecha_hora_sistema():
     """Línea completa para barra inferior: fecha, hora, temp y voltaje."""
     temp = stats.get("cpuTemp", 0)
-    volt = stats.get("voltage", 0)
-    volt_str = f"{volt:.1f}V" if volt > 0 else "---V"
-    return f"Fecha: {datetime.now().astimezone().strftime('%d/%m/%Y')}  Hora: {hora()}  Temp: {temp:.1f}\xb0C  Voltaje: {volt_str}"
+    volt_big = stats.get("volt_big", "Voltaje: ---V")
+    return f"Fecha: {datetime.now().astimezone().strftime('%d/%m/%Y')}  Hora: {hora()}  Temp: {temp:.1f}\xb0C  {volt_big}"
 
 def freq_line():
     """Línea de frecuencias. Compacta en 320, completa en 800."""
@@ -673,17 +697,15 @@ def refresh_stats_fields():
     periódicamente desde clock_standby(), no solo al volver de una llamada,
     para que se vean desde el primer momento aunque no entre tráfico."""
     temp = stats.get("cpuTemp", 0)
-    volt = stats.get("voltage", 0)
     ip   = stats.get("localIp", "---")
-    volt_str = f"{volt:.1f}V" if volt > 0 else "---V"
     txts("t_ip",    f"IP: {ip}", 22)
     if _SMALL:
         # En 320 temp/voltaje van sin etiqueta (solo el valor) para que no se salgan
         txts("t_temp", f"{temp:.1f}\xb0C", 14)
-        txts("t_volt", volt_str, 14)
+        txts("t_volt", stats.get("volt_small", "---V"), 14)
     else:
         txts("t_temp", f"Temp: {temp:.1f}\xb0C", 14)
-        txts("t_volt", f"Voltaje: {volt_str}", 14)
+        txts("t_volt", stats.get("volt_big", "Voltaje: ---V"), 14)
 
 def show_standby():
     if current_page[0] != 0:
