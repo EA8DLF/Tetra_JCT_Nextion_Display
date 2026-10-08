@@ -299,6 +299,7 @@ Type=simple
 User=$CURRENT_USER
 # Tamaño de pantalla: "320" (TJC3224T0xx 320x240) o "800" (TJC8048X543 800x480)
 Environment=NEXTION_SIZE=$NEXTION_SIZE
+Environment=PYTHONUNBUFFERED=1
 WorkingDirectory=$CURRENT_HOME
 ExecStart=/usr/bin/python3 $DEST_SCRIPT
 Restart=on-failure
