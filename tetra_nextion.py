@@ -45,7 +45,14 @@ BAUD_RATE      = 9600              # Algunas pantallas grandes (p.ej. TJC8048X54
 # TetraPack Monitor — dejar vacío ("") si no se usa monitor local
 MONITOR_URL    = "http://localhost:5000"
 
-# Ruta al config.toml de bluestation-bs
+# Si no hay monitor, se lee el journal del systemd de la propia estación
+# base directamente. Nombre de la unidad (p.ej. "bluestation-bs",
+# "flowstation-bs" o "nexus-bs@pi" según el software/paquete usado).
+# Vacío = autodetectar por nombre conocido (ver _detect_journal_unit),
+# o journal completo del sistema si no se encuentra ninguna.
+JOURNAL_UNIT   = ""
+
+# Ruta al config.toml de bluestation-bs/flowstation/nexus-bs
 # Dejar vacío para autodetección, o especificar ruta completa:
 # CONFIG_TOML  = "/home/usuario/bluestation-bs/config.toml"
 CONFIG_TOML    = ""
@@ -65,6 +72,7 @@ CALL_MIN_DISPLAY  = 20   # Mínimo en pantalla tras soltar PTT
 SDS_DISPLAY       = 15   # Tiempo mostrando SDS texto
 SDS_BLOCK_TIME    = 30   # Bloqueo SDS tras llamada de voz
 EMERGENCY_DISPLAY = 25   # Tiempo mostrando emergencia
+TERMINAL_OFFLINE_SEC = 180  # Sin noticias del terminal → se marca offline (rojo)
 
 # ─── OVERRIDES por variable de entorno (opcional) ─────────────
 # Permiten cambiar cualquier ajuste sin editar el código ni reinstalar:
@@ -74,12 +82,14 @@ EMERGENCY_DISPLAY = 25   # Tiempo mostrando emergencia
 SERIAL_PORT       = os.environ.get("TETRA_SERIAL_PORT", SERIAL_PORT)
 BAUD_RATE         = int(os.environ.get("TETRA_BAUD_RATE", BAUD_RATE))
 MONITOR_URL       = os.environ.get("TETRA_MONITOR_URL", MONITOR_URL)
+JOURNAL_UNIT      = os.environ.get("TETRA_JOURNAL_UNIT", JOURNAL_UNIT)
 CONFIG_TOML       = os.environ.get("TETRA_CONFIG_TOML", CONFIG_TOML)
 DEFAULT_TX        = os.environ.get("TETRA_DEFAULT_TX", DEFAULT_TX)
 DEFAULT_RX        = os.environ.get("TETRA_DEFAULT_RX", DEFAULT_RX)
 DEFAULT_MCC       = os.environ.get("TETRA_DEFAULT_MCC", DEFAULT_MCC)
 DEFAULT_MNC       = os.environ.get("TETRA_DEFAULT_MNC", DEFAULT_MNC)
 EMERGENCY_ISSI    = os.environ.get("TETRA_EMERGENCY_ISSI", EMERGENCY_ISSI)
+TERMINAL_OFFLINE_SEC = int(os.environ.get("TETRA_TERMINAL_OFFLINE_SEC", TERMINAL_OFFLINE_SEC))
 STANDBY_TIMEOUT   = int(os.environ.get("TETRA_STANDBY_TIMEOUT", STANDBY_TIMEOUT))
 CALL_MIN_DISPLAY  = int(os.environ.get("TETRA_CALL_MIN_DISPLAY", CALL_MIN_DISPLAY))
 SDS_DISPLAY       = int(os.environ.get("TETRA_SDS_DISPLAY", SDS_DISPLAY))
@@ -107,6 +117,49 @@ CACHE_MAX_AGE = timedelta(hours=24)
 RADIOID_URL   = "https://radioid.net/static/user.csv"
 API_URL       = f"{MONITOR_URL}/api/log-stream" if MONITOR_URL else ""
 STATS_URL     = f"{MONITOR_URL}/api/system/stats" if MONITOR_URL else ""
+
+# ─── JOURNAL DE LA ESTACIÓN BASE (sin monitor) ────────────────
+# Nombres de unidad conocidos de estaciones base basadas en el stack
+# tetra-bluestation (bluestation-bs, FlowStation, Nexus-BS...). Si no hay
+# monitor configurado, se busca una unidad systemd activa que contenga
+# alguno de estos nombres en vez de asumir una fija.
+_KNOWN_BTS_UNITS = ("bluestation-bs", "flowstation", "nexus-bs", "tetra")
+_journal_unit_cache = [None]  # None = aún no buscado; "" = no encontrada
+
+def _detect_journal_unit():
+    """Devuelve la unidad systemd de la estación base a usar con journalctl -u.
+    JOURNAL_UNIT fijado a mano siempre gana; si no, se autodetecta una vez
+    y se cachea. Cadena vacía = no se encontró ninguna (se lee el journal
+    completo del sistema, comportamiento de siempre)."""
+    if JOURNAL_UNIT:
+        return JOURNAL_UNIT
+    if _journal_unit_cache[0] is not None:
+        return _journal_unit_cache[0]
+    found = ""
+    try:
+        out = subprocess.run(
+            ["systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain"],
+            capture_output=True, text=True, timeout=5
+        ).stdout
+        for line in out.splitlines():
+            unit = line.split()[0] if line.split() else ""
+            if any(name in unit.lower() for name in _KNOWN_BTS_UNITS):
+                found = unit
+                break
+    except Exception as e:
+        print(f"[journal] No se pudo autodetectar la unidad de la estación base: {e}")
+    if found:
+        print(f"[journal] Estación base detectada: {found}")
+    else:
+        print("[journal] Ninguna unidad conocida detectada — leyendo journal completo del sistema. "
+              "Si tu estación base tiene otro nombre, fija TETRA_JOURNAL_UNIT.")
+    _journal_unit_cache[0] = found
+    return found
+
+def _journal_unit_args():
+    """['-u', unidad] si se conoce la unidad, o [] para leer el journal completo."""
+    unit = _detect_journal_unit()
+    return ["-u", unit] if unit else []
 
 # ─── CONFIG.TOML ──────────────────────────────────────────────
 def read_config():
@@ -338,7 +391,7 @@ def fetch_stats():
         time.sleep(10)
 
 # ─── TERMINALES ───────────────────────────────────────────────
-# issi → {rssi, rssi_time, tg, callsign, online}
+# issi → {rssi, rssi_time, tg, callsign, online, last_seen}
 terminals = {}
 
 def update_terminal(issi, rssi=None, tg=None):
@@ -346,8 +399,9 @@ def update_terminal(issi, rssi=None, tg=None):
     if str(issi) in SYSTEM_ISSI:
         return
     t = terminals.setdefault(str(issi), {
-        "rssi": 0, "rssi_time": 0, "tg": "?", "callsign": "", "online": False
+        "rssi": 0, "rssi_time": 0, "tg": "?", "callsign": "", "online": False, "last_seen": 0
     })
+    t["last_seen"] = time.time()
     if rssi is not None:
         t["rssi"]      = rssi
         t["rssi_time"] = time.time()
@@ -356,6 +410,18 @@ def update_terminal(issi, rssi=None, tg=None):
             t["callsign"] = lookup(issi)[0]
     if tg is not None:
         t["tg"] = str(tg)
+
+def terminal_online(issi):
+    """True si el terminal ha dado señal de vida hace menos de TERMINAL_OFFLINE_SEC.
+    No todas las estaciones base registran un evento explícito de baja (p.ej.
+    nexus-bs no lo hace), así que el timeout es la única forma fiable de
+    detectar que un terminal se ha desconectado."""
+    t = terminals.get(str(issi))
+    if not t:
+        return False
+    if not t.get("online", False):
+        return False
+    return time.time() - t.get("last_seen", 0) < TERMINAL_OFFLINE_SEC
 
 def terminal_line(issi):
     """Genera línea de texto para mostrar en standby."""
@@ -376,8 +442,7 @@ def refresh_terminals():
         comp = f"ter{i}"
         if i-1 < len(sorted_t):
             issi   = sorted_t[i-1]
-            t      = terminals.get(str(issi), {})
-            online = t.get("online", False)
+            online = terminal_online(issi)
             send(f"{comp}.pco={2016 if online else 63488}")
             txts(comp, terminal_line(issi), 35)
         else:
@@ -385,25 +450,29 @@ def refresh_terminals():
             txts(comp, "", 35)
 
 def init_terminals_from_journal():
-    """Lee el journal para conocer el estado Online/Offline al arrancar."""
+    """Lee el journal para conocer el estado Online/Offline al arrancar.
+    Solo sirve para pre-rellenar la lista; terminal_online() decide luego
+    por timeout, así que una base de datos de 'register' incompleta aquí
+    no deja terminales offline atascados en verde."""
     time.sleep(5)  # Esperar a que radioid cargue
     try:
         result = subprocess.run(
-            ["journalctl", "--since", "2 hours ago", "--no-pager", "-q"],
+            ["journalctl", *_journal_unit_args(), "--since", "2 hours ago", "--no-pager", "-q"],
             capture_output=True, text=True, timeout=10
         )
         states = {}
         for line in result.stdout.splitlines():
-            m = re.search(r"BrewEntity: subscriber register issi=(\d+)", line)
-            if m: states[m.group(1)] = True
-            m = re.search(r"BrewEntity: subscriber deregister issi=(\d+)", line)
+            m = RE_REGISTER.search(line)
+            if m: states[m.group(1) or m.group(2)] = True
+            m = RE_DEREGISTER.search(line)
             if m: states[m.group(1)] = False
         for issi, online in states.items():
             if str(issi) not in SYSTEM_ISSI:
                 t = terminals.setdefault(str(issi), {
-                    "rssi": 0, "rssi_time": 0, "tg": "?", "callsign": "", "online": False
+                    "rssi": 0, "rssi_time": 0, "tg": "?", "callsign": "", "online": False, "last_seen": 0
                 })
-                t["online"] = online
+                t["online"]    = online
+                t["last_seen"] = time.time()
                 if not t["callsign"]:
                     t["callsign"] = lookup(issi)[0]
                 print(f"[terminal] init: {issi} = {'Online' if online else 'Offline'}")
@@ -426,7 +495,7 @@ def get_sds_text_from_journal(dst_issi, seconds=10):
     """Busca el texto SDS más reciente en el journal para un ISSI destino."""
     try:
         result = subprocess.run(
-            ["journalctl", f"--since={seconds} seconds ago", "--no-pager", "-q"],
+            ["journalctl", *_journal_unit_args(), f"--since={seconds} seconds ago", "--no-pager", "-q"],
             capture_output=True, text=True, timeout=3
         )
         lines = list(reversed(result.stdout.splitlines()))
@@ -624,7 +693,7 @@ def show_emergency(issi_src, text=""):
 
 # ─── PATRONES DE LOG ──────────────────────────────────────────
 RE_RSSI       = re.compile(r"MsRssiUpdate \{ issi: (\d+), rssi_dbfs: ([-\d.]+) \}")
-RE_REGISTER   = re.compile(r"BrewEntity: subscriber register issi=(\d+)")
+RE_REGISTER   = re.compile(r"BrewEntity: subscriber register issi=(\d+)|subscriber affiliate issi=(\d+)")
 RE_DEREGISTER = re.compile(r"BrewEntity: subscriber deregister issi=(\d+)")
 RE_EMERG_TEXT = re.compile(r"CmceSdsData \{ source_issi: " + EMERGENCY_ISSI + r".*?\[(\d+(?:,\s*\d+)*)\]")
 RE_EMERGENCY  = re.compile(r"SHORT_TRANSFER uuid=\S+ src=(\d+) dst=" + EMERGENCY_ISSI)
@@ -635,7 +704,7 @@ RE_NET_VOICE  = re.compile(r"BrewWorker: GROUP_TX uuid=(\S+) src=(\d+) dst=(\d+)
 RE_NET_SDS    = re.compile(r"BrewWorker: SHORT_TRANSFER uuid=\S+ src=(\d+) dst=(\d+)")
 RE_NET_STALE  = re.compile(r"expiring stale pending SDS")
 RE_NET_END    = re.compile(r"BrewWorker: GROUP_IDLE uuid=(\S+)|BrewEntity: group call ended uuid=(\S+)")
-RE_LOCAL_END  = re.compile(r"DTxCeased|U-TX CEASED|release_group_call")
+RE_LOCAL_END  = re.compile(r"DTxCeased|D-TX CEASED|U-TX CEASED|release_group_call|releasing group call")
 
 # ─── PROCESADO DE LOGS ────────────────────────────────────────
 def process_line(line):
@@ -651,17 +720,21 @@ def process_line(line):
     # ── REGISTRO/BAJA DE TERMINALES ──────────────────────────
     m = RE_REGISTER.search(line)
     if m:
-        issi = m.group(1)
+        issi = m.group(1) or m.group(2)
         if str(issi) not in SYSTEM_ISSI:
             t = terminals.setdefault(str(issi), {
-                "rssi": 0, "rssi_time": 0, "tg": "?", "callsign": "", "online": False
+                "rssi": 0, "rssi_time": 0, "tg": "?", "callsign": "", "online": False, "last_seen": 0
             })
-            t["online"] = True
+            t["online"]    = True
+            t["last_seen"] = time.time()
             if not t["callsign"]:
                 t["callsign"] = lookup(issi)[0]
             print(f"[terminal] ONLINE: {issi}")
         return
 
+    # No todas las estaciones base envían un evento explícito de baja
+    # (nexus-bs no lo hace) — terminal_online() ya cubre ese caso por
+    # timeout, pero si el log sí lo trae (otra estación base) se respeta.
     m = RE_DEREGISTER.search(line)
     if m:
         issi = m.group(1)
@@ -796,14 +869,11 @@ def process_line(line):
         # Sin texto legible → ignorar (no mostrar en page1)
 
 # ─── STREAM DE LOGS ───────────────────────────────────────────
-def stream_logs():
-    """Conecta al stream SSE del monitor y procesa cada línea de log."""
-    if not API_URL:
-        print("[stream] Sin monitor configurado — modo sin stream")
-        return
+def _stream_logs_monitor():
+    """Conecta al stream SSE del monitor (TetraPack/brew-server) y procesa cada línea."""
     while True:
         try:
-            print("[stream] Conectando...")
+            print("[stream] Conectando al monitor...")
             with requests.get(API_URL, stream=True, timeout=(10, None)) as r:
                 r.raise_for_status()
                 connected_at[0] = time.time()
@@ -819,6 +889,35 @@ def stream_logs():
         except Exception as e:
             print(f"[stream] Error: {e}. Reconectando en 3s...")
             time.sleep(3)
+
+def _stream_logs_journal():
+    """Sin monitor: lee en vivo el journal de la estación base (journalctl -f)."""
+    while True:
+        try:
+            unit_args = _journal_unit_args()
+            print(f"[stream] Conectando a journalctl -f {' '.join(unit_args)} ...", flush=True)
+            proc = subprocess.Popen(
+                ["journalctl", "-f", *unit_args, "-n", "0", "-o", "cat", "--no-pager"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                text=True, errors="replace", bufsize=1
+            )
+            connected_at[0] = time.time()
+            print("[stream] Conectado.", flush=True)
+            for line in proc.stdout:
+                process_line(line)
+            proc.wait()
+        except Exception as e:
+            print(f"[stream] Error: {e}. Reconectando en 3s...", flush=True)
+        time.sleep(3)
+
+def stream_logs():
+    """Fuente de logs en vivo: monitor HTTP si está configurado, si no el
+    journal de la propia estación base (funciona igual con bluestation-bs,
+    FlowStation, Nexus-BS o cualquier otra que registre en journald)."""
+    if API_URL:
+        _stream_logs_monitor()
+    else:
+        _stream_logs_journal()
 
 # ─── BUCLE PRINCIPAL ──────────────────────────────────────────
 def main_loop():

@@ -209,16 +209,33 @@ echo -e "${BOLD}[4/5] Configuración de la red TETRA...${NC}"
 echo -e "${CYAN}Pulsa ENTER para usar el valor por defecto [entre corchetes]${NC}"
 echo ""
 
-echo -e "${BOLD}¿Tienes TetraPack Monitor (bluestation-bs) instalado? [S/n]:${NC}"
+echo -e "${BOLD}¿Tienes un monitor (TetraPack/brew-server) dando logs por HTTP? [s/N]:${NC}"
 read -p "  " INPUT_MONITOR_YN
-INPUT_MONITOR_YN="${INPUT_MONITOR_YN:-S}"
+INPUT_MONITOR_YN="${INPUT_MONITOR_YN:-N}"
 
+JOURNAL_UNIT=""
 if [[ "$INPUT_MONITOR_YN" =~ ^[Ss]$ ]]; then
     MONITOR_URL="http://localhost:5000"
     echo -e "${GREEN}  ✅ Monitor: $MONITOR_URL${NC}"
 else
     MONITOR_URL=""
-    echo -e "${YELLOW}  ⚠️  Sin monitor — el script leerá el journal directamente${NC}"
+    echo -e "${YELLOW}  ⚠️  Sin monitor — se leerá el journal de la estación base directamente${NC}"
+    # Autodetectar la unidad systemd de la estación base (bluestation-bs,
+    # FlowStation, Nexus-BS... cualquiera basada en el stack tetra-bluestation)
+    DETECTED_UNIT=$(systemctl list-units --type=service --all --no-legend --plain 2>/dev/null \
+        | awk '{print $1}' | grep -iE 'bluestation|flowstation|nexus-bs|tetra' | head -1)
+    if [ -n "$DETECTED_UNIT" ]; then
+        echo -e "${GREEN}  ✅ Unidad de la estación base detectada: $DETECTED_UNIT${NC}"
+    else
+        echo -e "${YELLOW}  ⚠️  No se detectó ninguna unidad conocida${NC}"
+    fi
+    read -p "  Unidad systemd de la estación base [$DETECTED_UNIT]: " INPUT_UNIT
+    JOURNAL_UNIT="${INPUT_UNIT:-$DETECTED_UNIT}"
+    if [ -n "$JOURNAL_UNIT" ]; then
+        echo -e "${GREEN}  ✅ Se leerá: journalctl -u $JOURNAL_UNIT${NC}"
+    else
+        echo -e "${YELLOW}  ⚠️  Sin unidad — se leerá el journal completo del sistema${NC}"
+    fi
 fi
 
 echo ""
@@ -245,6 +262,7 @@ DEST_SCRIPT="$CURRENT_HOME/$SCRIPT_NAME"
 cp "$INSTALL_DIR/$SCRIPT_NAME" "$DEST_SCRIPT"
 
 sed -i "s|MONITOR_URL    = \"http://localhost:5000\"|MONITOR_URL    = \"$MONITOR_URL\"|" "$DEST_SCRIPT"
+sed -i "s|JOURNAL_UNIT   = \"\"|JOURNAL_UNIT   = \"$JOURNAL_UNIT\"|"                       "$DEST_SCRIPT"
 sed -i "s|DEFAULT_TX     = \"431.000MHz\"|DEFAULT_TX     = \"$DEFAULT_TX\"|"             "$DEST_SCRIPT"
 sed -i "s|DEFAULT_RX     = \"438.600MHz\"|DEFAULT_RX     = \"$DEFAULT_RX\"|"             "$DEST_SCRIPT"
 sed -i "s|DEFAULT_MCC    = \"001\"|DEFAULT_MCC    = \"$DEFAULT_MCC\"|"                   "$DEST_SCRIPT"
@@ -322,6 +340,9 @@ echo -e "  Puerto:    ${BOLD}$SERIAL_PORT${NC} @ ${BOLD}${BAUD_RATE}${NC} bd"
 echo -e "  TX/RX:     ${BOLD}$DEFAULT_TX / $DEFAULT_RX${NC}"
 echo -e "  MCC/MNC:   ${BOLD}$DEFAULT_MCC / $DEFAULT_MNC${NC}"
 echo -e "  Monitor:   ${BOLD}${MONITOR_URL:-Sin monitor}${NC}"
+if [ -z "$MONITOR_URL" ]; then
+    echo -e "  Journal:   ${BOLD}${JOURNAL_UNIT:-sistema completo}${NC}"
+fi
 echo ""
 
 if [ "$REBOOT_NEEDED" = true ]; then
