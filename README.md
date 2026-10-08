@@ -55,15 +55,19 @@ Desarrollado por **EA8DLF** · 2026
 
 | Fabricante | Modelos | Tamaño |
 |---|---|---|
-| **TJC** | TJC3224T022, TJC3224T028 | 2.2" / 2.8" |
-| **Nextion Basic** | NX3224T022, NX3224T024, NX3224T028 | 2.2" / 2.4" / 2.8" |
-| **Nextion Enhanced** | NX3224K022, NX3224K024, NX3224K028 | 2.2" / 2.4" / 2.8" |
+| **TJC** | TJC3224T022 ✅ probado, TJC3224T028 | 2.2" / 2.8" |
 
 ### 800×480 px — HMI v4 (`TETRA TJC8048X543 (800×480).tft`)
 
 | Fabricante | Modelos | Tamaño |
 |---|---|---|
-| **TJC Enhanced** | TJC8048X543 | 5" |
+| **TJC** | TJC8048X543 ✅ probado | 5" |
+
+> Solo se han probado en hardware real TJC3224T022 (320×240) y TJC8048X543 (800×480);
+> el resto de modelos TJC de la misma resolución deberían funcionar igual (mismo fabricante,
+> mismo protocolo). No se listan pantallas Nextion genuinas (no-TJC): aunque hablan el mismo
+> protocolo UART, el `.tft` se compila para un modelo concreto y no hay garantía de que el
+> mismo archivo sea compatible con hardware de otro fabricante — no se ha probado.
 
 > Cada resolución requiere su propio archivo `.tft`, pero **el script Python es el mismo
 > para las dos pantallas y usa los mismos nombres de componente en ambas** (`t_hora`,
