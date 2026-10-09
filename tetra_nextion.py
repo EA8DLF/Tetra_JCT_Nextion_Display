@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# TETRA Nextion Display v4.2
+# TETRA Nextion Display v4.3
 # Copyright (C) 2026 Jose Maria - EA8DLF
 #
 # This program is free software: you can redistribute it and/or modify
@@ -14,10 +14,11 @@
 #
 # https://www.gnu.org/licenses/gpl-3.0.txt
 # ═══════════════════════════════════════════════════════════════
-#  TETRA Nextion/TJC Display v4.2 - EA8DLF 2026
+#  TETRA Nextion/TJC Display v4.3 - EA8DLF 2026
 #
 #  Compatible con pantallas:
 #    · TJC3224T022 / TJC3224T028  (320×240 px)
+#    · NX4024T032                  (400×240 px, sin probar en hardware real)
 #    · TJC8048X543                 (800×480 px)
 #
 #  ESTADOS:
@@ -26,6 +27,14 @@
 #  POST_VOZ   → page1 (20s tras PTT)
 #  SDS        → page4 (texto legible) o ignorado (GPS/binario)
 #  EMERGENCIA → page3 (SOS con sirenas, 25s, prioridad absoluta)
+#
+#  CAMBIOS v4.3 respecto a v4.2:
+#    · IP/temp/voltaje visibles desde el arranque, no solo tras una llamada
+#    · Voltaje real (EXT5V_V) en Pi 4/5; en Pi 3 sin PMIC, estado de
+#      subtensión ("5V OK"/"5V BAJO!") en vez del voltaje de núcleo
+#    · read_config() vuelve a consultar el monitor si hay uno configurado
+#    · NEXTION_SIZE admite cualquier ancho compacto, no solo 320/800
+#    · Soporte para pantalla Nextion NX4024T032 (400×240)
 #
 #  CAMBIOS v4.2 respecto a v4.0 (unificación pantalla grande+pequeña):
 #    · Online/Offline por timeout de inactividad, no por evento de log
@@ -1151,7 +1160,7 @@ def clock_standby():
 
 # ─── MAIN ─────────────────────────────────────────────────────
 def main():
-    print("[nextion] TETRA Nextion Display v4.2 - EA8DLF")
+    print("[nextion] TETRA Nextion Display v4.3 - EA8DLF")
     print("[nextion] Compatible: TJC3224T028 (320×240) | TJC8048X543 (800×480)")
     init_serial()
     probe_display()   # si no hay pantalla Nextion conectada, sale limpio (exit 0)
@@ -1171,7 +1180,7 @@ def main():
     threading.Thread(target=clock_standby,             daemon=True).start()
     threading.Thread(target=init_terminals_from_journal, daemon=True).start()
 
-    print("[nextion] En marcha. v4.2")
+    print("[nextion] En marcha. v4.3")
     main_loop()
 
 if __name__ == "__main__":

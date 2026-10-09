@@ -1,10 +1,19 @@
-# TETRA Nextion Display v4.2
+# TETRA Nextion Display v4.3
 
 Monitor de red TETRA en tiempo real para pantalla TJC/Nextion conectada a Raspberry Pi mediante UART.
 
 Desarrollado por **EA8DLF** · 2026
 
 ---
+
+## Novedades v4.3
+
+- 📟 **Pantalla Nextion genuina NX4024T032 (400×240)** — HMI nuevo, mismos nombres de componente que la pequeña (⚠️ compilado, pendiente de probar en hardware real — ver checklist más abajo)
+- 📊 **IP/temperatura/voltaje visibles desde el arranque** — antes no se veían hasta que entraba la primera llamada
+- 🔌 **Voltaje real en vez del núcleo** — en Pi 4/5 lee el riel de 5V (`EXT5V_V`); en Pi 3 y anteriores, sin PMIC para medirlo, muestra el estado de subtensión (`5V OK`/`5V BAJO!`) en vez de un número engañoso
+- 🛠️ **`read_config()` vuelve a consultar el monitor** cuando hay uno configurado, en vez de caer siempre al `config.toml` local
+- 📐 **`NEXTION_SIZE` admite cualquier ancho compacto** (no solo `320`/`800`) — para pantallas nuevas con la misma altura que la pequeña
+- 🪵 **`PYTHONUNBUFFERED=1`** en el servicio — los logs se ven al instante con `journalctl -f`, no solo cuando se llena el búfer
 
 ## Novedades v4.2
 
@@ -253,7 +262,7 @@ python3 ~/tetra_nextion.py        # ejecución manual
 
 ```
 Tetra_JCT_Nextion_Display/
-├── tetra_nextion.py                       # Script principal (v4.2)
+├── tetra_nextion.py                       # Script principal (v4.3)
 ├── install.sh                             # Instalador interactivo
 ├── TETRA V2.tft                           # HMI compilado 320×240 px
 ├── TETRA TJC8048X543 (800×480).tft        # HMI compilado 800×480 px
