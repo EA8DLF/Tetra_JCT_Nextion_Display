@@ -139,12 +139,16 @@ CUSTOM_ISSI = {
 }
 
 # ─── PERFIL SEGÚN TAMAÑO DE PANTALLA ──────────────────────────
-# La pantalla pequeña (320×240) es el diseño base. La grande (800×480)
-# reusa los mismos nombres de componente y añade campos extra. Aquí se
-# ajusta el CONTENIDO que se envía a los campos COMPARTIDOS para que no
-# se salga en 320. Los campos que solo existen en la grande se ignoran
-# solos (la Nextion descarta comandos a componentes inexistentes).
-_SMALL    = DISPLAY_SIZE == "320"
+# La pantalla pequeña (320×240, o cualquier otra variante compacta como la
+# 400×240) es el diseño base. La grande (800×480) reusa los mismos nombres
+# de componente y añade campos extra. Aquí se ajusta el CONTENIDO que se
+# envía a los campos COMPARTIDOS para que no se salga en las pequeñas. Los
+# campos que solo existen en la grande se ignoran solos (la Nextion
+# descarta comandos a componentes inexistentes).
+# Solo "800" se trata como pantalla grande; cualquier otro valor (320, 400,
+# o lo que sea) usa el diseño compacto — así una resolución nueva funciona
+# igual que la pequeña en cuanto el HMI tenga los mismos nombres de componente.
+_SMALL    = DISPLAY_SIZE != "800"
 
 SDS_WRAP  = 26 if _SMALL else 45    # ancho de cada línea de SDS (caracteres)
 SDS_LINES = 3  if _SMALL else 5     # nº de campos t_smg disponibles en el HMI

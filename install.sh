@@ -82,9 +82,12 @@ echo ""
 echo -e "${BOLD}¿Qué pantalla tienes?${NC}"
 echo "  1) Pequeña — TJC3224T022/T028 (320×240)"
 echo "  2) Grande  — TJC8048X543 (800×480)"
-read -p "  Elige [1/2, por defecto 1]: " INPUT_SIZE
+echo "  3) Otra — indica el ancho en píxeles de tu HMI (compacta, como la pequeña)"
+read -p "  Elige [1/2/3, por defecto 1]: " INPUT_SIZE
 case "$INPUT_SIZE" in
     2) NEXTION_SIZE="800" ;;
+    3) read -p "  Ancho en píxeles (p.ej. 400): " INPUT_CUSTOM_SIZE
+       NEXTION_SIZE="${INPUT_CUSTOM_SIZE:-320}" ;;
     *) NEXTION_SIZE="320" ;;
 esac
 echo -e "${GREEN}  ✅ Pantalla: ${NEXTION_SIZE}×...${NC}"

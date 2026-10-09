@@ -102,7 +102,7 @@ bash install.sh
 ```
 
 El instalador:
-- Pregunta el tamaño de pantalla (320×240 o 800×480) y lo deja fijado como `NEXTION_SIZE` en el servicio
+- Pregunta el tamaño de pantalla (320×240, 800×480, u otro ancho si tienes un HMI propio con esas mismas resoluciones) y lo deja fijado como `NEXTION_SIZE` en el servicio
 - Detecta automáticamente el modelo de Raspberry Pi (incluida Pi 5)
 - Configura el UART en `/boot/firmware/config.txt` o `/boot/config.txt`
 - **Pi 5:** elimina `console=serial0` de `cmdline.txt` automáticamente
@@ -193,7 +193,7 @@ Tras editar el `.service`: `sudo systemctl daemon-reload && sudo systemctl resta
 | `TETRA_MONITOR_URL` | URL de TetraPack Monitor | `http://localhost:5000` |
 | `TETRA_JOURNAL_UNIT` | Unidad systemd de la estación base (sin monitor) | autodetección |
 | `TETRA_TERMINAL_OFFLINE_SEC` | Segundos sin noticias de un terminal → offline/rojo | `180` |
-| `NEXTION_SIZE` | Tamaño de pantalla: `320` o `800` (sin prefijo `TETRA_`, va en el `.service`) | `320` |
+| `NEXTION_SIZE` | Ancho de pantalla: `800` = diseño grande; cualquier otro valor (`320`, `400`...) = diseño compacto, igual que la pequeña (sin prefijo `TETRA_`, va en el `.service`) | `320` |
 | `TETRA_CONFIG_TOML` | Ruta al `config.toml` de bluestation-bs/FlowStation/Nexus-BS | autodetección |
 | `TETRA_DEFAULT_TX` / `TETRA_DEFAULT_RX` | Frecuencias TX/RX por defecto | `431.000MHz` / `438.600MHz` |
 | `TETRA_DEFAULT_MCC` / `TETRA_DEFAULT_MNC` | MCC/MNC por defecto | `001` / `001` |
