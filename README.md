@@ -75,6 +75,15 @@ Desarrollado por **EA8DLF** · 2026
 > compilado específicamente para ese modelo exacto (no es un reciclado de otro), con los
 > mismos nombres de componente que la pantalla de 320×240, pero **aún no se ha verificado en
 > la pantalla física** — quita este aviso en cuanto se confirme en hardware real.
+>
+> **Checklist para quien la pruebe por primera vez** (`bash install.sh` → opción 3, ancho `400`):
+> - `p_flag` (bandera del país, page1): comprobar que no se sale del recuadro ni se solapa con texto
+> - `t_st1`/`t_st2`/`t_st3` (badge Online/Offline, page0): color verde/rojo correcto y legible
+> - Tipografía: el original usa una fuente concreta: en este HMI se aproximó con Arial negrita
+>   (USART HMI no permite exportar la fuente original) — comprobar que no se corta ningún texto
+> - `ter1`-`ter3` (lista de terminales, page0): recortados a 270px — comprobar que no se corta
+>   el ISSI/indicativo/RSSI/TG
+> - Si algo no encaja, son ajustes de posición/tamaño en el `.HMI` (no hace falta tocar el `.py`)
 
 > Cada resolución requiere su propio archivo `.tft`, pero **el script Python es el mismo
 > para las dos pantallas y usa los mismos nombres de componente en ambas** (`t_hora`,
