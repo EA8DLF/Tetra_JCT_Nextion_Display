@@ -2,6 +2,7 @@
 *.bak
 *.bak-*
 *~
+~$*
 
 # Bytecode Python
 __pycache__/

@@ -317,9 +317,13 @@ Tetra_JCT_Nextion_Display/
 ├── tetra_nextion.py                       # Script principal (v4.4)
 ├── install.sh                             # Instalador interactivo
 ├── TETRA V2.tft                           # HMI compilado 320×240 px
+├── TETRA NX4024T032 (400x240).tft         # HMI compilado 400×240 px
 ├── TETRA TJC8048X543 (800×480).tft        # HMI compilado 800×480 px
 ├── Docs/
-│   └── MANUAL.md                          # Manual de usuario completo
+│   ├── MANUAL.md                          # Manual de usuario (al día)
+│   ├── TETRA_Nextion_Display_v33_Manual.docx  # Manual histórico v3.3
+│   └── TETRA_Nextion_Display_v40_Manual.docx  # Manual histórico v4.0
+├── LICENSE
 └── README.md
 ```
 
