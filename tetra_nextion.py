@@ -18,7 +18,7 @@
 #
 #  Compatible con pantallas:
 #    · TJC3224T022 / TJC3224T028  (320×240 px)
-#    · NX4024T032                  (400×240 px, sin probar en hardware real)
+#    · NX4024T032                  (400×240 px)
 #    · TJC8048X543                 (800×480 px)
 #
 #  ESTADOS:

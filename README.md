@@ -28,7 +28,7 @@ sobre Nexus-BS v0.1.80 en una Raspberry Pi 3B+ — gracias.
 
 ## Novedades v4.3
 
-- 📟 **Pantalla Nextion genuina NX4024T032 (400×240)** — HMI nuevo, mismos nombres de componente que la pequeña (⚠️ compilado, pendiente de probar en hardware real — ver checklist más abajo)
+- 📟 **Pantalla Nextion genuina NX4024T032 (400×240)** — HMI nuevo, mismos nombres de componente que la pequeña ✅ probado en hardware real
 - 📊 **IP/temperatura/voltaje visibles desde el arranque** — antes no se veían hasta que entraba la primera llamada
 - 🔌 **Voltaje real en vez del núcleo** — en Pi 4/5 lee el riel de 5V (`EXT5V_V`); en Pi 3 y anteriores, sin PMIC para medirlo, muestra el estado de subtensión (`5V OK`/`5V BAJO!`) en vez de un número engañoso
 - 🛠️ **`read_config()` vuelve a consultar el monitor** cuando hay uno configurado, en vez de caer siempre al `config.toml` local
@@ -90,7 +90,7 @@ sobre Nexus-BS v0.1.80 en una Raspberry Pi 3B+ — gracias.
 
 | Fabricante | Modelos | Tamaño |
 |---|---|---|
-| **Nextion** (genuina) | NX4024T032 ⚠️ compilado, no probado en hardware real | 3.2" |
+| **Nextion** (genuina) | NX4024T032 ✅ probado | 3.2" |
 
 ### 800×480 px — HMI v4 (`TETRA TJC8048X543 (800×480).tft`)
 
@@ -98,21 +98,10 @@ sobre Nexus-BS v0.1.80 en una Raspberry Pi 3B+ — gracias.
 |---|---|---|
 | **TJC** | TJC8048X543 ✅ probado | 5" |
 
-> Solo se han probado en hardware real TJC3224T022 (320×240) y TJC8048X543 (800×480);
-> el resto de modelos TJC de la misma resolución deberían funcionar igual (mismo fabricante,
-> mismo protocolo). La NX4024T032 (400×240) es una Nextion genuina, no TJC: su `.tft` se ha
-> compilado específicamente para ese modelo exacto (no es un reciclado de otro), con los
-> mismos nombres de componente que la pantalla de 320×240, pero **aún no se ha verificado en
-> la pantalla física** — quita este aviso en cuanto se confirme en hardware real.
->
-> **Checklist para quien la pruebe por primera vez** (`bash install.sh` → opción 3, ancho `400`):
-> - `p_flag` (bandera del país, page1): comprobar que no se sale del recuadro ni se solapa con texto
-> - `t_st1`/`t_st2`/`t_st3` (badge Online/Offline, page0): color verde/rojo correcto y legible
-> - Tipografía: el original usa una fuente concreta: en este HMI se aproximó con Arial negrita
->   (USART HMI no permite exportar la fuente original) — comprobar que no se corta ningún texto
-> - `ter1`-`ter3` (lista de terminales, page0): recortados a 270px — comprobar que no se corta
->   el ISSI/indicativo/RSSI/TG
-> - Si algo no encaja, son ajustes de posición/tamaño en el `.HMI` (no hace falta tocar el `.py`)
+> Probado en hardware real: TJC3224T022 (320×240), NX4024T032 (400×240, Nextion
+> genuina — verificado por Juan Carlos, EA7BW) y TJC8048X543 (800×480). El resto
+> de modelos TJC de la misma resolución deberían funcionar igual (mismo
+> fabricante, mismo protocolo), pero no se han probado uno a uno.
 
 > Cada resolución requiere su propio archivo `.tft`, pero **el script Python es el mismo
 > para las dos pantallas y usa los mismos nombres de componente en ambas** (`t_hora`,
