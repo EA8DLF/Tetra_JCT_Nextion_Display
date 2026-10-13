@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# TETRA Nextion Display v4.3
+# TETRA Nextion Display v4.4
 # Copyright (C) 2026 Jose Maria - EA8DLF
 #
 # This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
 #
 # https://www.gnu.org/licenses/gpl-3.0.txt
 # ═══════════════════════════════════════════════════════════════
-#  TETRA Nextion/TJC Display v4.3 - EA8DLF 2026
+#  TETRA Nextion/TJC Display v4.4 - EA8DLF 2026
 #
 #  Compatible con pantallas:
 #    · TJC3224T022 / TJC3224T028  (320×240 px)
@@ -27,6 +27,16 @@
 #  POST_VOZ   → page1 (20s tras PTT)
 #  SDS        → page4 (texto legible) o ignorado (GPS/binario)
 #  EMERGENCIA → page3 (SOS con sirenas, 25s, prioridad absoluta)
+#
+#  CAMBIOS v4.4 respecto a v4.3 (probado y depurado por Juan Carlos, EA7BW
+#  sobre Nexus-BS v0.1.80 sin monitor, Raspberry Pi 3B+):
+#    · Reconoce llamadas de red reales de Nexus-BS ("BrewEntity: forwarding
+#      local call...", formato distinto al original "BrewWorker: GROUP_TX")
+#    · Llamada entrante sin datos de origen → "Llamada de red" en vez de
+#      dejar la pantalla sin reaccionar (RE_NET_READY / RE_NET_READY_CMCE)
+#    · Unidad systemd elegida por contenido real del log si hay varias
+#      candidatas por nombre (p.ej. nexus-bs.service vs nexus-bs-control.service)
+#    · RE_LOCAL_END: nueva variante "local call transmission stopped"
 #
 #  CAMBIOS v4.3 respecto a v4.2:
 #    · IP/temp/voltaje visibles desde el arranque, no solo tras una llamada
@@ -188,17 +198,59 @@ def _detect_journal_unit():
         return JOURNAL_UNIT
     if _journal_unit_cache[0] is not None:
         return _journal_unit_cache[0]
+    # Unidades "compañeras" (panel de control, API, dashboard...) suelen
+    # coincidir también por substring (p.ej. "nexus-bs-control.service"
+    # contiene "nexus-bs") pero no son la que escribe los eventos de
+    # registro/voz/SDS — se evitan si hay una alternativa mejor.
+    _COMPANION_HINTS = ("control", "api", "dashboard", "web", "monitor", "status", "ui")
     found = ""
     try:
         out = subprocess.run(
             ["systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain"],
             capture_output=True, text=True, timeout=5
         ).stdout
+        candidates = []
         for line in out.splitlines():
             unit = line.split()[0] if line.split() else ""
-            if any(name in unit.lower() for name in _KNOWN_BTS_UNITS):
-                found = unit
-                break
+            lo = unit.lower()
+            if any(name in lo for name in _KNOWN_BTS_UNITS):
+                candidates.append(unit)
+        if len(candidates) == 1:
+            found = candidates[0]
+        elif candidates:
+            # Varias candidatas por nombre (p.ej. "nexus-bs.service" y
+            # "nexus-bs-control.service") — el nombre es cosa de cada
+            # instalación, así que no hay forma fiable de adivinar por ahí.
+            # Señal real: cuál escribe de verdad líneas con el formato que
+            # el script reconoce (registro, voz, CMCE...).
+            _LOG_HINTS = ("BrewEntity:", "BrewWorker:", "CMCE:",
+                          "subscriber register", "subscriber affiliate")
+            scored = []
+            for unit in candidates:
+                try:
+                    sample = subprocess.run(
+                        ["journalctl", "-u", unit, "-n", "200", "--no-pager", "-q"],
+                        capture_output=True, text=True, timeout=5
+                    ).stdout
+                    hits = sum(sample.count(h) for h in _LOG_HINTS)
+                except Exception:
+                    hits = 0
+                scored.append((hits, unit))
+            best_hits, best_unit = max(scored, key=lambda t: t[0])
+            if best_hits > 0:
+                found = best_unit
+                print(f"[journal] Varias unidades candidatas {candidates} — "
+                      f"por contenido real del log, elegida: {found} ({best_hits} coincidencias)")
+            else:
+                def _score(unit):
+                    lo = unit.lower()
+                    is_exact = any(lo == f"{name}.service" for name in _KNOWN_BTS_UNITS)
+                    is_companion = any(hint in lo for hint in _COMPANION_HINTS)
+                    return (is_companion, not is_exact)  # False < True al ordenar
+                candidates.sort(key=_score)
+                found = candidates[0]
+                print(f"[journal] Varias unidades candidatas sin logs reconocibles aún: "
+                      f"{candidates} — elegida por nombre: {found}")
     except Exception as e:
         print(f"[journal] No se pudo autodetectar la unidad de la estación base: {e}")
     if found:
@@ -743,8 +795,14 @@ def show_standby():
 
 # ─── PANTALLA VOZ (page1) ─────────────────────────────────────
 def show_event(issi, tipo, tg="", issi_dst=""):
-    callsign, name, provincia = lookup(issi)
-    is_system = str(issi) in SYSTEM_ISSI
+    # ISSI "0" = llamada de red entrante sin origen conocido (ver
+    # RE_NET_READY) — se trata como sistema para no buscarla en radioid
+    # ni intentar sacarle una bandera que no le corresponde.
+    is_system = str(issi) in SYSTEM_ISSI or str(issi) == "0"
+    if str(issi) == "0":
+        callsign, name, provincia = "Llamada", "de red", ""
+    else:
+        callsign, name, provincia = lookup(issi)
     pic, pais = (271, "TETRA Net") if is_system else get_flag(callsign)
 
     if current_page[0] != 1:
@@ -885,11 +943,26 @@ RE_EMERGENCY  = re.compile(r"SHORT_TRANSFER uuid=\S+ src=(\d+) dst=" + EMERGENCY
 RE_SDS        = re.compile(r"SDS: U-SDS-DATA from ISSI (\d+) to ISSI (\d+), type=(\d+)")
 RE_VOICE      = re.compile(r"rx_u_setup: call from ISSI (\d+) to (GSSI|ISSI) (\d+)")
 RE_VOICE_P2P  = re.compile(r"rx_u_setup_p2p: call from ISSI (\d+) to ISSI (\d+)")
-RE_NET_VOICE  = re.compile(r"BrewWorker: GROUP_TX uuid=(\S+) src=(\d+) dst=(\d+)")
+# Dos formatos de inicio de llamada de red, según versión/módulo de la
+# estación base: el original "BrewWorker: GROUP_TX" (uuid primero), y el
+# de Nexus-BS "BrewEntity: forwarding local call to TetraPack" cuando un
+# terminal local llama hacia la red (uuid al final, campo "gssi" en vez
+# de "dst"). Confirmado en producción con Nexus-BS v0.1.80.
+RE_NET_VOICE  = re.compile(
+    r"BrewWorker: GROUP_TX uuid=(?P<uuid1>\S+) src=(?P<src1>\d+) dst=(?P<dst1>\d+)"
+    r"|BrewEntity: forwarding local call to TetraPack: call_id=\d+ src=(?P<src2>\d+) gssi=(?P<dst2>\d+) ts=\d+ uuid=(?P<uuid2>\S+)"
+)
+# Llamada de red ENTRANTE sin datos de quien habla (nivel de log por
+# defecto de Nexus-BS, módulo cmce silenciado) — se muestra como
+# "Llamada de red" genérica. Si el módulo cmce está en info (ver README,
+# "Nexus-BS: ver quién habla en llamadas entrantes"), llega en su lugar
+# RE_NET_READY_CMCE, con el ISSI y grupo reales.
+RE_NET_READY       = re.compile(r"BrewEntity: network call ready uuid=(\S+)")
+RE_NET_READY_CMCE  = re.compile(r"CMCE: network group ready call_id=\d+ uuid=(\S+) source ISSI (\d+) GSSI (\d+) ts=\d+")
 RE_NET_SDS    = re.compile(r"BrewWorker: SHORT_TRANSFER uuid=\S+ src=(\d+) dst=(\d+)")
 RE_NET_STALE  = re.compile(r"expiring stale pending SDS")
 RE_NET_END    = re.compile(r"BrewWorker: GROUP_IDLE uuid=(\S+)|BrewEntity: group call ended uuid=(\S+)")
-RE_LOCAL_END  = re.compile(r"DTxCeased|D-TX CEASED|U-TX CEASED|release_group_call|releasing group call")
+RE_LOCAL_END  = re.compile(r"DTxCeased|D-TX CEASED|U-TX CEASED|release_group_call|releasing group call|local call transmission stopped")
 
 # ─── PROCESADO DE LOGS ────────────────────────────────────────
 def process_line(line):
@@ -982,10 +1055,12 @@ def process_line(line):
             print("[state] VOZ local → POST_VOZ")
         return
 
-    # ── VOZ RED ──────────────────────────────────────────────
+    # ── VOZ RED (local hacia la red) ──────────────────────────
     m = RE_NET_VOICE.search(line)
     if m:
-        uuid, issi_src, gssi_dst = m.group(1), m.group(2), m.group(3)
+        uuid      = m.group("uuid1") or m.group("uuid2")
+        issi_src  = m.group("src1")  or m.group("src2")
+        gssi_dst  = m.group("dst1")  or m.group("dst2")
         if str(issi_src) in VOICE_FILTER:
             return
         active_calls[uuid] = (issi_src, gssi_dst)
@@ -996,6 +1071,37 @@ def process_line(line):
         state_start[0]= time.time()
         print(f"[state] → VOZ RED {issi_src} TG:{gssi_dst}")
         show_event(issi_src, "NET VOZ", tg=gssi_dst)
+        return
+
+    # ── VOZ RED ENTRANTE, con origen (cmce=info) ──────────────
+    m = RE_NET_READY_CMCE.search(line)
+    if m:
+        uuid, issi_src, gssi_dst = m.group(1), m.group(2), m.group(3)
+        if str(issi_src) in VOICE_FILTER:
+            return
+        active_calls[uuid] = (issi_src, gssi_dst)
+        STATE[0]      = "VOZ"
+        call_start[0] = time.time()
+        state_start[0]= time.time()
+        print(f"[state] → VOZ RED {issi_src} TG:{gssi_dst} (entrante)")
+        show_event(issi_src, "NET VOZ", tg=gssi_dst)
+        return
+
+    # ── VOZ RED ENTRANTE, sin origen (nivel de log por defecto) ─
+    # Nexus-BS avisa de la llamada pero, con cmce en "warn" (el nivel por
+    # defecto), no registra quién habla ni el grupo hasta que termina. Se
+    # muestra como "Llamada de red" (issi "0", tratado como sistema en
+    # show_event) en vez de dejar la pantalla sin reaccionar.
+    m = RE_NET_READY.search(line)
+    if m:
+        uuid = m.group(1)
+        active_calls.setdefault(uuid, ("0", "?"))
+        if STATE[0] != "VOZ":
+            STATE[0]      = "VOZ"
+            call_start[0] = time.time()
+            state_start[0]= time.time()
+            print("[state] → VOZ RED (entrante, sin origen)")
+            show_event("0", "NET VOZ", tg="?")
         return
 
     # ── SDS RED ──────────────────────────────────────────────
@@ -1160,7 +1266,7 @@ def clock_standby():
 
 # ─── MAIN ─────────────────────────────────────────────────────
 def main():
-    print("[nextion] TETRA Nextion Display v4.3 - EA8DLF")
+    print("[nextion] TETRA Nextion Display v4.4 - EA8DLF")
     print("[nextion] Compatible: TJC3224T028 (320×240) | TJC8048X543 (800×480)")
     init_serial()
     probe_display()   # si no hay pantalla Nextion conectada, sale limpio (exit 0)
@@ -1180,7 +1286,7 @@ def main():
     threading.Thread(target=clock_standby,             daemon=True).start()
     threading.Thread(target=init_terminals_from_journal, daemon=True).start()
 
-    print("[nextion] En marcha. v4.3")
+    print("[nextion] En marcha. v4.4")
     main_loop()
 
 if __name__ == "__main__":

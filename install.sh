@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-# TETRA Nextion Display v4.3 - Instalador
+# TETRA Nextion Display v4.4 - Instalador
 # EA8DLF 2026 — https://github.com/EA8DLF/Tetra_JCT_Nextion_Display
 # ═══════════════════════════════════════════════════════════════
 
@@ -23,7 +23,7 @@ clear
 
 echo -e "${BLUE}${BOLD}"
 echo " ╔══════════════════════════════════════════════════════════╗"
-echo " ║     TETRA Nextion Display v4.3 - EA8DLF                 ║"
+echo " ║     TETRA Nextion Display v4.4 - EA8DLF                 ║"
 echo " ║     Instalador automático                                ║"
 echo " ║     Compatible: 320×240 | 800×480                       ║"
 echo " ╚══════════════════════════════════════════════════════════╝"
@@ -226,9 +226,44 @@ else
     MONITOR_URL=""
     echo -e "${YELLOW}  ⚠️  Sin monitor — se leerá el journal de la estación base directamente${NC}"
     # Autodetectar la unidad systemd de la estación base (bluestation-bs,
-    # FlowStation, Nexus-BS... cualquiera basada en el stack tetra-bluestation)
-    DETECTED_UNIT=$(systemctl list-units --type=service --all --no-legend --plain 2>/dev/null \
-        | awk '{print $1}' | grep -iE 'bluestation|flowstation|nexus-bs|tetra' | head -1)
+    # FlowStation, Nexus-BS... cualquiera basada en el stack tetra-bluestation).
+    # Se descartan las unidades "compañeras" (panel de control, API...) si hay
+    # alternativa, y se prefiere una coincidencia exacta tipo "nexus-bs.service"
+    # sobre otra con sufijo (p.ej. "nexus-bs-control.service" NO es la que
+    # escribe los eventos de registro/voz/SDS, aunque contenga "nexus-bs").
+    ALL_CANDIDATES=$(systemctl list-units --type=service --all --no-legend --plain 2>/dev/null \
+        | awk '{print $1}' | grep -iE 'bluestation|flowstation|nexus-bs|tetra')
+    N_CANDIDATES=$(echo "$ALL_CANDIDATES" | grep -c . || true)
+    DETECTED_UNIT=""
+    if [ "$N_CANDIDATES" -gt 1 ]; then
+        # El nombre es cosa de cada instalación (p.ej. "nexus-bs.service" y
+        # "nexus-bs-control.service" coinciden las dos por substring) — en
+        # vez de adivinar por nombre, se mira cuál escribe de verdad líneas
+        # con el formato que el script reconoce (registro, voz, CMCE...).
+        BEST_HITS=0
+        while IFS= read -r CAND; do
+            [ -z "$CAND" ] && continue
+            HITS=$(journalctl -u "$CAND" -n 200 --no-pager -q 2>/dev/null \
+                | grep -cE 'BrewEntity:|BrewWorker:|CMCE:|subscriber register|subscriber affiliate' || true)
+            if [ "$HITS" -gt "$BEST_HITS" ]; then
+                BEST_HITS="$HITS"
+                DETECTED_UNIT="$CAND"
+            fi
+        done <<< "$ALL_CANDIDATES"
+        if [ -n "$DETECTED_UNIT" ]; then
+            echo -e "${CYAN}  ℹ️  Varias unidades candidatas, elegida por contenido real del log ($BEST_HITS coincidencias): $DETECTED_UNIT${NC}"
+        fi
+    fi
+    if [ -z "$DETECTED_UNIT" ]; then
+        # Única candidata, o ninguna con logs reconocibles aún (instalación
+        # recién arrancada) — se cae al criterio por nombre: se descartan
+        # las unidades "compañeras" (panel de control, API...) si hay
+        # alternativa, y se prefiere una coincidencia exacta "nombre.service".
+        CLEAN_CANDIDATES=$(echo "$ALL_CANDIDATES" | grep -ivE 'control|api|dashboard|web|monitor|status')
+        POOL="${CLEAN_CANDIDATES:-$ALL_CANDIDATES}"
+        DETECTED_UNIT=$(echo "$POOL" | grep -iE '^(bluestation-bs|flowstation|nexus-bs|tetra)\.service$' | head -1)
+        DETECTED_UNIT="${DETECTED_UNIT:-$(echo "$POOL" | head -1)}"
+    fi
     if [ -n "$DETECTED_UNIT" ]; then
         echo -e "${GREEN}  ✅ Unidad de la estación base detectada: $DETECTED_UNIT${NC}"
     else
@@ -293,7 +328,7 @@ if [[ "$INPUT_SERVICE" =~ ^[Ss]$ ]]; then
 
     sudo tee "$SERVICE_FILE" > /dev/null << SERVICEEOF
 [Unit]
-Description=TETRA Nextion Display v4.3 - EA8DLF
+Description=TETRA Nextion Display v4.4 - EA8DLF
 After=network-online.target
 Wants=network-online.target
 

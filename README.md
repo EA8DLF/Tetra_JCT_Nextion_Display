@@ -1,10 +1,30 @@
-# TETRA Nextion Display v4.3
+# TETRA Nextion Display v4.4
 
 Monitor de red TETRA en tiempo real para pantalla TJC/Nextion conectada a Raspberry Pi mediante UART.
 
 Desarrollado por **EA8DLF** · 2026
 
 ---
+
+## Novedades v4.4
+
+Probado, depurado y arreglado por **Juan Carlos, EA7BW**, instalando desde cero
+sobre Nexus-BS v0.1.80 en una Raspberry Pi 3B+ — gracias.
+
+- 📞 **Reconoce llamadas de red reales de Nexus-BS** — antes solo detectaba el
+  registro de terminales; las llamadas (salientes y entrantes) usan un formato
+  de log distinto (`BrewEntity: forwarding local call...`) que no coincidía
+  con el patrón original, así que nunca se mostraban
+- 📵 **Llamada entrante sin datos de origen ya no deja la pantalla sin reaccionar**
+  — se muestra como "Llamada de red" en vez de quedarse en reposo
+- 🔎 **Unidad systemd elegida por contenido real del log, no solo por nombre**
+  — si hay varias candidatas parecidas (p.ej. `nexus-bs.service` y
+  `nexus-bs-control.service`, un panel de control aparte), se detecta cuál
+  escribe de verdad eventos de registro/voz en vez de coger la primera
+- 🏁 **Nueva variante de fin de llamada local** — `local call transmission stopped`
+- 📖 **Documentado**: cómo subir el nivel de log de Nexus-BS para ver quién
+  habla en llamadas entrantes, y cómo corregir la unidad detectada sin tocar
+  el script (`TETRA_JOURNAL_UNIT`)
 
 ## Novedades v4.3
 
@@ -120,6 +140,8 @@ RX (pantalla)      →   Pin 8  (GPIO14 / TX)
 
 ## Instalación
 
+Si `git clone` falla con `git: command not found`, instala git primero: `sudo apt install -y git`.
+
 ```bash
 git clone https://github.com/EA8DLF/Tetra_JCT_Nextion_Display
 cd Tetra_JCT_Nextion_Display
@@ -229,6 +251,47 @@ Tras editar el `.service`: `sudo systemctl daemon-reload && sudo systemctl resta
 | `TETRA_SDS_BLOCK_TIME` | Segundos de bloqueo SDS tras voz | `30` |
 | `TETRA_EMERGENCY_DISPLAY` | Segundos mostrando emergencia | `25` |
 
+### Nexus-BS: ver quién habla en llamadas entrantes
+
+Por defecto, muchas instalaciones de Nexus-BS bajan el nivel de log de los
+módulos `cmce`/`umac`/`mm` a `warn` (variable `RUST_LOG` del servicio), que
+es justo donde se escribe quién llama y a qué grupo en una llamada
+**entrante** de red. Sin eso, la pantalla la muestra igualmente como
+"Llamada de red" (sin indicativo ni TG) — no es un fallo del script, es que
+ese dato no está en el log al nivel por defecto.
+
+Para verlo, sube solo ese módulo a `info` (sin tocar el resto, que generaría
+mucho más log):
+
+```bash
+NEW=$(systemctl show nexus-bs.service -p Environment --value | tr ' ' '\n' \
+      | grep '^RUST_LOG=' | sed 's/tetra_entities::cmce=warn/tetra_entities::cmce=info/')
+sudo mkdir -p /etc/systemd/system/nexus-bs.service.d
+printf '[Service]\nEnvironment="%s"\n' "$NEW" | sudo tee /etc/systemd/system/nexus-bs.service.d/20-loglevel.conf
+sudo systemctl daemon-reload && sudo systemctl restart nexus-bs.service
+```
+
+Reiniciar `nexus-bs.service` tira los registros activos (los terminales
+volverán a aparecer Offline hasta que se re-registren). Para revertirlo:
+`sudo rm /etc/systemd/system/nexus-bs.service.d/20-loglevel.conf && sudo systemctl daemon-reload && sudo systemctl restart nexus-bs.service`.
+
+### Corregir la unidad systemd detectada, sin tocar el script
+
+El instalador autodetecta la unidad de la estación base, pero si tienes
+varias con nombre parecido (p.ej. `nexus-bs.service` y
+`nexus-bs-control.service`, un panel de control aparte) puede acertar con
+la que no es. Para corregirlo **no hace falta editar `tetra_nextion.py`**:
+
+```ini
+# sudo systemctl edit tetra-nextion.service
+[Service]
+Environment=TETRA_JOURNAL_UNIT=nexus-bs.service
+```
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl restart tetra-nextion.service
+```
+
 ### Opción B — editar el script instalado
 
 Editar la sección `─── AJUSTES ───` en `tetra_nextion.py` (son los valores
@@ -262,7 +325,7 @@ python3 ~/tetra_nextion.py        # ejecución manual
 
 ```
 Tetra_JCT_Nextion_Display/
-├── tetra_nextion.py                       # Script principal (v4.3)
+├── tetra_nextion.py                       # Script principal (v4.4)
 ├── install.sh                             # Instalador interactivo
 ├── TETRA V2.tft                           # HMI compilado 320×240 px
 ├── TETRA TJC8048X543 (800×480).tft        # HMI compilado 800×480 px
